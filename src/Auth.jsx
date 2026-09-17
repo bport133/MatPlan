@@ -122,20 +122,91 @@ function LoadingScreen() {
 }
 
 /**
+ * Supabase redirects invite and password-recovery links back here with
+ * `type=invite` or `type=recovery` in the URL fragment. Those sign the
+ * visitor in with a short-lived session but never set a password — without
+ * this check they'd land straight in the app having never set one, then be
+ * unable to sign in again later. Checked once at load, before Supabase's
+ * client strips the fragment.
+ */
+function isRecoveryLink() {
+  return /type=invite|type=recovery/.test(window.location.hash || "");
+}
+
+function SetPassword({ onDone }) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setError(null);
+    if (password.length < 8) {
+      setError("Use at least 8 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("Passwords don't match.");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setBusy(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    // Drop the recovery params so refreshing this page doesn't re-trigger the form.
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    onDone();
+  }
+
+  return (
+    <div style={shell}>
+      <form style={card} onSubmit={submit}>
+        <div style={{ fontFamily: "Anton, Impact, sans-serif", fontSize: 28, marginBottom: 4, letterSpacing: ".03em" }}>
+          MAT<span style={{ color: "#d81e2c" }}>PLAN</span>
+        </div>
+        <p style={{ fontSize: 12, color: "#8a8f94", marginBottom: 20 }}>Set your password to finish signing in.</p>
+
+        <label style={labelStyle}>New Password</label>
+        <input style={inputStyle} type="password" required autoFocus minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
+
+        <label style={labelStyle}>Confirm Password</label>
+        <input style={inputStyle} type="password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+
+        {error && <p style={{ color: "#ff6b76", fontSize: 12, marginBottom: 12 }}>{error}</p>}
+
+        <button style={{ ...btnStyle, opacity: busy ? 0.6 : 1 }} disabled={busy} type="submit">
+          {busy ? "Saving…" : "Save Password"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/**
  * Gates the whole app behind Supabase auth. When Supabase isn't configured
  * (no VITE_SUPABASE_URL/ANON_KEY at build time), this is a no-op passthrough
  * so local dev and the original single-browser mode keep working unchanged.
  */
 export default function AuthGate({ children }) {
   const [session, setSession] = useState(undefined); // undefined = still checking
+  const [needsPassword, setNeedsPassword] = useState(false);
 
   useEffect(() => {
     if (!supabaseEnabled) return;
     let cancelled = false;
+    if (isRecoveryLink()) setNeedsPassword(true);
+
     supabase.auth.getSession().then(({ data }) => {
       if (!cancelled) setSession(data.session);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "PASSWORD_RECOVERY") setNeedsPassword(true);
+      setSession(s);
+    });
     return () => {
       cancelled = true;
       sub.subscription.unsubscribe();
@@ -145,6 +216,7 @@ export default function AuthGate({ children }) {
   if (!supabaseEnabled) return children;
   if (session === undefined) return <LoadingScreen />;
   if (!session) return <SignIn />;
+  if (needsPassword) return <SetPassword onDone={() => setNeedsPassword(false)} />;
 
   return (
     <AuthCtx.Provider value={{ user: session.user, signOut: () => supabase.auth.signOut() }}>
