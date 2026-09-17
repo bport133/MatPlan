@@ -72,7 +72,13 @@ function SignIn() {
     }
     setError(null);
     setBusy(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+    // Supabase's dashboard-level Site URL setting doesn't reliably honor a
+    // path (only the bare origin), which sent reset links to the GitHub
+    // Pages user root instead of the project page. Passing redirectTo here
+    // pins it to wherever this page is actually being served from.
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin + window.location.pathname,
+    });
     setBusy(false);
     if (error) setError(error.message);
     else setResetSent(true);
