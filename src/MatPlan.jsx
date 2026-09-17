@@ -6,7 +6,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase, supabaseEnabled } from "./lib/supabaseClient.js";
-import { useAuth } from "./Auth.jsx";
+import { useAuth, InviteCoach } from "./Auth.jsx";
 
 /* ============================== STYLES (ported from globals.css) ============================== */
 
@@ -4932,6 +4932,16 @@ function SettingsPage() {
       </div>
 
       <TeamsCard />
+
+      {supabaseEnabled && (
+        <div className="card pad">
+          <span className="seclbl">Coaches</span>
+          <p className="muted xs" style={{ marginTop: 6, marginBottom: 8 }}>
+            Invite another coach to this shared workspace. They'll get an email to set their password.
+          </p>
+          <InviteCoach />
+        </div>
+      )}
 
       <div className="card pad">
         <span className="seclbl">Program Data</span>

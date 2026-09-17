@@ -193,6 +193,60 @@ function SetPassword({ onDone }) {
 }
 
 /**
+ * Sends a coach invite through the invite-coach Edge Function rather than
+ * the Supabase dashboard's own "Send invitation" button — the dashboard
+ * can't pin the invite link's redirect to this app's actual URL, so those
+ * links 404 on GitHub Pages. The function also adds the email to the
+ * allowlist, so there's no separate SQL step first.
+ */
+export function InviteCoach() {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+    setBusy(true);
+    const { data, error } = await supabase.functions.invoke("invite-coach", {
+      body: { email: email.trim() },
+    });
+    setBusy(false);
+    if (error) {
+      setError(error.message || "Failed to send invite.");
+      return;
+    }
+    if (data && data.error) {
+      setError(data.error);
+      return;
+    }
+    setMessage(`Invited ${email.trim()}.`);
+    setEmail("");
+  }
+
+  return (
+    <form onSubmit={submit} className="row gap2 wrapf">
+      <input
+        className="inp"
+        style={{ maxWidth: 240 }}
+        type="email"
+        required
+        placeholder="coach@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+      <button className="btn btn-g btn-sm" disabled={busy} type="submit">
+        {busy ? "Inviting…" : "Invite Coach"}
+      </button>
+      {message && <span className="xs" style={{ color: "var(--tone-emerald-color)" }}>{message}</span>}
+      {error && <span className="xs" style={{ color: "var(--tone-red-color)" }}>{error}</span>}
+    </form>
+  );
+}
+
+/**
  * Gates the whole app behind Supabase auth. When Supabase isn't configured
  * (no VITE_SUPABASE_URL/ANON_KEY at build time), this is a no-op passthrough
  * so local dev and the original single-browser mode keep working unchanged.
