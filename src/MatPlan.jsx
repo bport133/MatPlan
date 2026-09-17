@@ -5,6 +5,8 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { supabase, supabaseEnabled } from "./lib/supabaseClient.js";
+import { useAuth } from "./Auth.jsx";
 
 /* ============================== STYLES (ported from globals.css) ============================== */
 
@@ -1309,39 +1311,111 @@ function seedState() {
 const AppCtx = React.createContext(null);
 const useApp = () => React.useContext(AppCtx);
 
+function runMigrations(saved) {
+  return migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))));
+}
+
+const APP_STATE_TABLE = "app_state";
+const APP_STATE_ROW_ID = "singleton";
+
+/**
+ * Two persistence backends behind one interface. Without Supabase configured
+ * (no VITE_SUPABASE_* at build time) this is exactly the original
+ * localStorage-only behavior. With it configured, state lives in one shared
+ * Postgres row (`app_state`), synced across signed-in coaches over Realtime —
+ * every other function in this file (makeApi, all the components) is
+ * unchanged, since both backends hand back the same `{ state, update, loaded }`
+ * shape and the same in-memory state tree.
+ */
 function usePersistentState() {
   const [state, setState] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const dirty = useRef(false);
+  const saving = useRef(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!supabaseEnabled) {
+      (async () => {
+        let next = null;
+        try {
+          const res = await window.storage.get(STORAGE_KEY);
+          if (res && res.value) next = JSON.parse(res.value);
+        } catch (err) {
+          next = null; // no saved state yet, or storage unavailable
+        }
+        if (cancelled) return;
+        setState(next && next.syllabus ? runMigrations(next) : seedState());
+        setLoaded(true);
+      })();
+      return () => { cancelled = true; };
+    }
+
     (async () => {
-      let next = null;
-      try {
-        const res = await window.storage.get(STORAGE_KEY);
-        if (res && res.value) next = JSON.parse(res.value);
-      } catch (err) {
-        next = null; // no saved state yet, or storage unavailable
+      const { data, error } = await supabase
+        .from(APP_STATE_TABLE)
+        .select("data")
+        .eq("id", APP_STATE_ROW_ID)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to load shared state:", error);
+        setState(seedState());
+        setLoaded(true);
+        return;
+      }
+      let next = data ? data.data : null;
+      if (!next || !next.syllabus) {
+        next = seedState();
+        await supabase
+          .from(APP_STATE_TABLE)
+          .upsert({ id: APP_STATE_ROW_ID, data: next, updated_by: user?.email || null });
+      } else {
+        next = runMigrations(next);
       }
       if (cancelled) return;
-      setState(
-        next && next.syllabus
-          ? migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(next))))))
-          : seedState()
-      );
+      setState(next);
       setLoaded(true);
     })();
-    return () => { cancelled = true; };
+
+    const channel = supabase
+      .channel("app_state_changes")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: APP_STATE_TABLE, filter: `id=eq.${APP_STATE_ROW_ID}` },
+        (payload) => {
+          // Skip the echo of our own in-flight save — it'll land from the
+          // local update instead, avoiding a flash back to the pre-save value.
+          if (saving.current) return;
+          if (payload.new && payload.new.data) setState(payload.new.data);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
     if (!loaded || !state || !dirty.current) return;
-    const t = setTimeout(() => {
-      try {
-        const p = window.storage.set(STORAGE_KEY, JSON.stringify(state));
-        if (p && p.catch) p.catch(() => {});
-      } catch (err) { /* storage unavailable — session-only */ }
+    const t = setTimeout(async () => {
+      if (!supabaseEnabled) {
+        try {
+          const p = window.storage.set(STORAGE_KEY, JSON.stringify(state));
+          if (p && p.catch) p.catch(() => {});
+        } catch (err) { /* storage unavailable — session-only */ }
+        return;
+      }
+      saving.current = true;
+      const { error } = await supabase
+        .from(APP_STATE_TABLE)
+        .upsert({ id: APP_STATE_ROW_ID, data: state, updated_at: new Date().toISOString(), updated_by: user?.email || null });
+      saving.current = false;
+      if (error) console.error("Failed to save shared state:", error);
     }, 350);
     return () => clearTimeout(t);
   }, [state, loaded]);
@@ -2049,6 +2123,7 @@ const TABS = [
 
 function TabNav() {
   const { view, go } = useApp();
+  const { user, signOut } = useAuth();
   return (
     <div className="card mb5" style={{ padding: 4, marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <div className="tabs">
@@ -2058,9 +2133,16 @@ function TabNav() {
           </button>
         ))}
       </div>
-      <button className="btn btn-ghost btn-sm" style={{ flexShrink: 0, marginRight: 4 }} title="Customize appearance" onClick={() => go("settings")}>
-        ⚙ Customize
-      </button>
+      <div className="row gap2" style={{ flexShrink: 0, marginRight: 4 }}>
+        {user && (
+          <button className="btn btn-ghost btn-sm" title={user.email} onClick={signOut}>
+            Sign Out
+          </button>
+        )}
+        <button className="btn btn-ghost btn-sm" title="Customize appearance" onClick={() => go("settings")}>
+          ⚙ Customize
+        </button>
+      </div>
     </div>
   );
 }
