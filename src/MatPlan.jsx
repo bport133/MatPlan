@@ -903,8 +903,17 @@ function selectOnFocus(e) {
   if (!["text", "number", "search", "tel", ""].includes(el.type)) return;
   if (el.readOnly || el.disabled || !el.value) return;
   // Deferred: Safari clears the selection if you set it during the focus event.
+  // That defer is exactly what made this unsafe — a fast click-then-type (or
+  // rapid tabbing between fields) could land a keystroke or two *before* this
+  // callback ran, so the select() below would grab a value that now includes
+  // what the user just typed, and the very next keystroke would wipe it out.
+  // Snapshotting the value at focus time and re-checking it here skips the
+  // selection entirely once that's happened, instead of clobbering it.
+  const valueAtFocus = el.value;
   requestAnimationFrame(() => {
-    try { el.select(); } catch (err) { /* some input types reject select() */ }
+    try {
+      if (document.activeElement === el && el.value === valueAtFocus) el.select();
+    } catch (err) { /* some input types reject select() */ }
   });
 }
 
