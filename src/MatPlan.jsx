@@ -54,7 +54,7 @@ const CSS = `
 .mp * { box-sizing: border-box; }
 .mp p, .mp h1, .mp h2, .mp h3, .mp ul { margin: 0; }
 
-.wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.wrap { max-width: none; margin: 0 auto; padding: 16px; }
 
 .card {
   background-color: var(--panel);
