@@ -166,7 +166,12 @@ const CSS = `
  * the content wrap or ellipsis inside the cell instead.
  */
 .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
-.cal-cell { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 3px; min-height: 84px; padding: 6px; background: var(--raised); display: flex; flex-direction: column; gap: 4px; }
+/* aspect-ratio scales cell height with the column's width so cells stay a
+   sensible shape as the page gets wider, instead of a fixed height that
+   turns into a flat sliver once each column has more room. min-height
+   floors it back on narrow screens, where width-driven height would be
+   too short to show anything. */
+.cal-cell { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 3px; aspect-ratio: 5 / 3; min-height: 84px; padding: 6px; background: var(--raised); display: flex; flex-direction: column; gap: 4px; }
 .cal-cell.sel { border-color: var(--accent); }
 /* The add form sits above the grid so it's visible without scrolling down. */
 .dayadd { border-color: var(--accent); }
