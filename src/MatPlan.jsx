@@ -665,6 +665,12 @@ function uid() {
 
 const pad2 = (n) => String(n).padStart(2, "0");
 
+/** Lets coaches type "calendar.google.com" without it being treated as a relative link. */
+function hrefFor(url) {
+  const trimmed = (url || "").trim();
+  return /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -1234,6 +1240,11 @@ function migrateWrestlerDetails(saved) {
   };
 }
 
+function migrateLinks(saved) {
+  if (Array.isArray(saved.links)) return saved;
+  return { ...saved, links: [] };
+}
+
 function migrateNumbering(saved) {
   if (saved.numberingRevision === NUMBERING_REVISION) return saved;
   return {
@@ -1312,6 +1323,7 @@ function seedState() {
     weighInSheets: [],
     history,
     categoryOrder: { POSITION: [], SITUATION: [], STRUCTURE: [] },
+    links: [],
     syllabusRevision: SYLLABUS_REVISION,
     numberingRevision: NUMBERING_REVISION,
   };
@@ -1321,7 +1333,7 @@ const AppCtx = React.createContext(null);
 const useApp = () => React.useContext(AppCtx);
 
 function runMigrations(saved) {
-  return migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))));
+  return migrateLinks(migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved)))))));
 }
 
 const APP_STATE_TABLE = "app_state";
@@ -1585,6 +1597,19 @@ function makeApi(update) {
       return id;
     },
     updateTeam: (id, data) => patchIn("teams", id, data),
+
+    /* ---- quick links ---- */
+    createLink(input) {
+      const id = uid();
+      update((s) => ({
+        ...s,
+        links: [...s.links, { id, label: input.label.trim() || "Link", url: input.url.trim() }],
+      }));
+      return id;
+    },
+    updateLink: (id, data) => patchIn("links", id, data),
+    removeLink: (id) => removeFrom("links", id),
+
     /**
      * Reassigning a practice's team also pulls it into that team's number
      * sequence — otherwise it would carry its old team's number across and
@@ -2274,7 +2299,27 @@ function Dashboard() {
         </div>
       </div>
 
+      <QuickLinksStrip />
+
       <CalendarSection teamFilter={teamFilter} />
+    </div>
+  );
+}
+
+/** Read-only — links are added and edited from Settings, not here. */
+function QuickLinksStrip() {
+  const { state } = useApp();
+  if (!state.links.length) return null;
+  return (
+    <div className="card pad row gap2 wrapf">
+      {state.links.map((l, i) => (
+        <React.Fragment key={l.id}>
+          {i > 0 && <span className="muted">·</span>}
+          <a href={hrefFor(l.url)} target="_blank" rel="noopener noreferrer" className="link xs">
+            {l.label}
+          </a>
+        </React.Fragment>
+      ))}
     </div>
   );
 }
@@ -4957,6 +5002,8 @@ function SettingsPage() {
 
       <TeamsCard />
 
+      <QuickLinksCard />
+
       {supabaseEnabled && (
         <div className="card pad">
           <span className="seclbl">Coaches</span>
@@ -5070,6 +5117,83 @@ function TeamsCard() {
           message="Renumber each team's practices 1–n by date? Reconciled practices keep their numbers."
           onConfirm={() => api.renumberAllPractices()}
         />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Managed here rather than on the Dashboard so adding or editing a link
+ * doesn't clutter the daily view — the Dashboard only ever shows the
+ * resulting list, read-only.
+ */
+function QuickLinksCard() {
+  const { state, api } = useApp();
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  const links = state.links;
+
+  function add() {
+    if (!label.trim() || !url.trim()) return;
+    api.createLink({ label, url });
+    setLabel("");
+    setUrl("");
+  }
+
+  return (
+    <div className="card">
+      <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Quick Links</h2></div>
+      {links.length > 0 && (
+        <div className="divide">
+          {links.map((l) => (
+            <div key={l.id} className="pad row between wrapf gap2">
+              <div className="row gap2 wrapf" style={{ flex: 1, minWidth: 0 }}>
+                <input
+                  className="inp"
+                  style={{ maxWidth: 200 }}
+                  value={l.label}
+                  onChange={(e) => api.updateLink(l.id, { label: e.target.value })}
+                />
+                <input
+                  className="inp"
+                  style={{ maxWidth: 260 }}
+                  value={l.url}
+                  onChange={(e) => api.updateLink(l.id, { url: e.target.value })}
+                />
+              </div>
+              <ConfirmButton
+                label="Remove"
+                message={`Remove "${l.label}" from Quick Links?`}
+                onConfirm={() => api.removeLink(l.id)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="pad row gap2 wrapf">
+        <input
+          className="inp"
+          style={{ maxWidth: 200 }}
+          placeholder="Label"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <input
+          className="inp"
+          style={{ maxWidth: 260 }}
+          placeholder="https://…"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <button className="btn btn-g btn-sm" onClick={add}>+ Add Link</button>
+      </div>
+      <div className="pad" style={{ paddingTop: 0 }}>
+        <p className="muted xs">
+          Shown on the Dashboard for one-click access to resources outside the app — team calendars, rosters on other
+          sites, handbooks, and the like.
+        </p>
       </div>
     </div>
   );
