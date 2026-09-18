@@ -2251,6 +2251,8 @@ function Dashboard() {
 
   return (
     <div className="grid" style={{ gap: 20 }}>
+      <QuickLinksStrip />
+
       <div className="card">
         <div className="hdr">
           <h2 className="b" style={{ fontSize: 16 }}>Next 3 Weeks</h2>
@@ -2298,8 +2300,6 @@ function Dashboard() {
           ))}
         </div>
       </div>
-
-      <QuickLinksStrip />
 
       <CalendarSection teamFilter={teamFilter} />
     </div>
