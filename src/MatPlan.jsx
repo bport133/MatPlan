@@ -47,14 +47,17 @@ const CSS = `
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: 15px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 .mp * { box-sizing: border-box; }
 .mp p, .mp h1, .mp h2, .mp h3, .mp ul { margin: 0; }
 
-.wrap { max-width: none; margin: 0 auto; padding: 16px; }
+/* Capped well above the old 1100px (which clipped content) but short of
+   the full window on a wide monitor — edge-to-edge left everything from
+   card grids to the syllabus browser looking sparse and oversized. */
+.wrap { max-width: 1600px; margin: 0 auto; padding: 16px; }
 
 .card {
   background-color: var(--panel);
@@ -93,8 +96,8 @@ const CSS = `
 @media (max-width: 640px) { .prow-head { grid-template-columns: 1fr auto; } .prow-dur { grid-column: 2; } }
 
 .muted { color: var(--muted); }
-.tiny { font-size: 11px; }
-.xs { font-size: 12px; }
+.tiny { font-size: 12px; }
+.xs { font-size: 13px; }
 .b { font-weight: 700; }
 .sb { font-weight: 600; }
 .eb { font-weight: 800; }
@@ -108,18 +111,18 @@ const CSS = `
 
 .inp {
   width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 3px;
-  padding: .4rem .6rem; font-size: .875rem; color: var(--text); outline: none; font-family: inherit;
+  padding: .4rem .6rem; font-size: .9375rem; color: var(--text); outline: none; font-family: inherit;
 }
 .inp:focus { border-color: var(--accent); }
 .mp textarea.inp { resize: vertical; min-height: 44px; }
 .mp select.inp { cursor: pointer; }
-.fld > span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: block; margin-bottom: 4px; }
+.fld > span { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: block; margin-bottom: 4px; }
 .fld { display: block; }
 
 .mp button { font-family: inherit; cursor: pointer; }
 .btn {
   display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .75rem; border-radius: 3px;
-  font-size: .8125rem; font-weight: 700; font-family: var(--font-heading); letter-spacing: .02em;
+  font-size: .875rem; font-weight: 700; font-family: var(--font-heading); letter-spacing: .02em;
   transition: .15s; border: none; background: none; text-decoration: none;
 }
 .btn-g { background: var(--accent); color: var(--accent-ink); }
@@ -128,28 +131,28 @@ const CSS = `
 .btn-o:hover { background: #9fa4a9; }
 .btn-ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
 .btn-ghost:hover { background: #2a2a2a; }
-.btn-sm { padding: .25rem .5rem; font-size: .75rem; }
+.btn-sm { padding: .25rem .5rem; font-size: .8125rem; }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .mp :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .tab {
   display: inline-flex; align-items: center; gap: .35rem; padding: .5rem .75rem; border-radius: 3px;
-  font-size: .8125rem; font-weight: 700; font-family: var(--font-heading); text-transform: uppercase;
+  font-size: .875rem; font-weight: 700; font-family: var(--font-heading); text-transform: uppercase;
   letter-spacing: .04em; white-space: nowrap; color: var(--muted); background: none; border: none;
 }
 .tab.on { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(216,30,44,.35); }
 .tabs { display: flex; gap: .25rem; padding: .25rem; overflow-x: auto; }
 
-.seclbl { font-size: 11px; font-weight: 700; font-family: var(--font-heading); text-transform: uppercase; letter-spacing: .1em; color: var(--accent); padding-top: 4px; display: block; }
+.seclbl { font-size: 12px; font-weight: 700; font-family: var(--font-heading); text-transform: uppercase; letter-spacing: .1em; color: var(--accent); padding-top: 4px; display: block; }
 
-.pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid; white-space: nowrap; font-weight: 600; display: inline-block; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid; white-space: nowrap; font-weight: 600; display: inline-block; }
 
 .divide > * + * { border-top: 1px solid var(--line); }
 .click { cursor: pointer; }
 .click:hover { background: rgba(255,255,255,.03); }
 
-.mp table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.mp th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.mp table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.mp th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; padding: 8px 16px; border-bottom: 1px solid var(--line); }
 .mp td { padding: 8px 16px; }
 .mp tbody tr:hover { background: rgba(255,255,255,.03); }
 
@@ -179,18 +182,22 @@ const CSS = `
 .cal-cell .pill { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .cal-evt { display: flex; align-items: center; gap: .5rem; min-width: 0; }
 .cal-evt > .pill { flex: 1; min-width: 0; }
-@media (max-width: 640px) { .cal-cell { min-height: 56px; padding: 4px; font-size: 11px; } }
+@media (max-width: 640px) { .cal-cell { min-height: 56px; padding: 4px; font-size: 12px; } }
 
 .flyout { display: flex; align-items: stretch; gap: 0; overflow-x: auto; }
-.flyout-col { min-width: 230px; max-width: 230px; flex: none; padding: 12px; border-right: 1px solid var(--line); }
-.flyout-col.detail { min-width: 320px; max-width: 420px; }
-.flyout-col-title { font-family: var(--font-heading); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 700; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-.flyout-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; margin-bottom: 4px; border-radius: 2px; cursor: pointer; font-size: 13px; color: var(--text); background: transparent; border: 1px solid transparent; width: 100%; text-align: left; font-family: inherit; }
+.flyout-col { min-width: 250px; max-width: 250px; flex: none; padding: 12px; border-right: 1px solid var(--line); }
+/* Grows to use whatever room is left in the browser column instead of
+   capping at a fixed width — on a wide window the nav columns above only
+   add up to a fraction of it, and a fixed detail width just left the rest
+   of the card empty. */
+.flyout-col.detail { min-width: 320px; max-width: 560px; flex: 1 1 420px; }
+.flyout-col-title { font-family: var(--font-heading); font-size: 12px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-weight: 700; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.flyout-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 10px; margin-bottom: 4px; border-radius: 2px; cursor: pointer; font-size: 14px; color: var(--text); background: transparent; border: 1px solid transparent; width: 100%; text-align: left; font-family: inherit; }
 .flyout-item:hover { background: var(--panel2); }
 .flyout-item.chosen { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 .flyout-item .arrow { opacity: .5; font-size: 12px; }
 .flyout-item.chosen .arrow { opacity: 1; }
-.flyout-empty { padding: 20px 8px; color: var(--muted); font-size: 12px; }
+.flyout-empty { padding: 20px 8px; color: var(--muted); font-size: 13px; }
 
 .rte { border: 1px solid var(--line); border-radius: 3px; background: var(--panel2); overflow: hidden; }
 .rte-toolbar { display: flex; gap: 2px; padding: 4px; border-bottom: 1px solid var(--line); background: var(--panel); }
@@ -2250,12 +2257,12 @@ function AppHeader({ logoDataUrl }) {
             <span style={{ color: "var(--accent)" }}>PLAN</span>
           </span>
         </div>
-        <p style={{ fontFamily: "var(--font-heading)", fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".08em", margin: "4px 0 0" }}>
+        <p style={{ fontFamily: "var(--font-heading)", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".08em", margin: "4px 0 0" }}>
           Plan. Teach. Develop. Win.
         </p>
       </div>
       <div style={{ flex: "1 1 320px", textAlign: "center", margin: "0 16px" }}>
-        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 15, margin: 0, lineHeight: 1.25 }}>
+        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 16, margin: 0, lineHeight: 1.25 }}>
           The Complete Wrestling Development System for Building Championship Programs
         </h1>
         <p className="muted xs" style={{ margin: "4px 0 0", lineHeight: 1.4 }}>
@@ -2362,7 +2369,7 @@ function Dashboard() {
 
       <div className="card">
         <div className="hdr">
-          <h2 className="b" style={{ fontSize: 16 }}>Next 3 Weeks</h2>
+          <h2 className="b" style={{ fontSize: 17 }}>Next 3 Weeks</h2>
           <div className="row gap2 wrapf">
             <span className="muted tiny upper">Team</span>
             <TeamSelect value={teamFilter} onChange={setTeamFilter} allLabel="All Teams" style={{ maxWidth: 180 }} />
@@ -2478,7 +2485,7 @@ function CalendarSection({ teamFilter }) {
   return (
     <div className="card">
       <div className="hdr">
-        <h2 className="sb" style={{ fontSize: 14 }}>{monthLabel}</h2>
+        <h2 className="sb" style={{ fontSize: 15 }}>{monthLabel}</h2>
         <div className="row gap2 wrapf">
           <button className="btn btn-ghost btn-sm" onClick={() => step(-1)}>← Prev</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setCursor({ year: now.getFullYear(), month: now.getMonth() + 1 })}>Today</button>
@@ -2812,7 +2819,7 @@ function PracticeListPage() {
       <div className="card">
         <div className="pad" style={{ paddingBottom: 0 }}><PracticeSubNav /></div>
         <div className="hdr">
-          <h1 className="b" style={{ fontSize: 16 }}>Practice Plans</h1>
+          <h1 className="b" style={{ fontSize: 17 }}>Practice Plans</h1>
           <div className="row gap2 wrapf">
             <span className="muted tiny upper">Showing</span>
             <TeamSelect value={teamFilter} onChange={setTeamFilter} allLabel="All Teams" style={{ maxWidth: 180 }} />
@@ -2833,7 +2840,7 @@ function PracticeListPage() {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Upcoming / Unreconciled</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Upcoming / Unreconciled</h2></div>
         <div className="divide">
           {upcoming.map((p) => (
             <div key={p.id} className="row">
@@ -2852,7 +2859,7 @@ function PracticeListPage() {
 
       <div className="card">
         <div className="hdr">
-          <h2 className="sb" style={{ fontSize: 14 }}>Recently Reconciled</h2>
+          <h2 className="sb" style={{ fontSize: 15 }}>Recently Reconciled</h2>
           <button className="link xs" onClick={() => go("practice", "archive")}>View full archive →</button>
         </div>
         <div className="divide">
@@ -2971,7 +2978,7 @@ function ArchivePage() {
     <div className="grid" style={{ gap: 20 }}>
       <div className="card">
         <div className="pad" style={{ paddingBottom: 0 }}><PracticeSubNav /></div>
-        <div className="hdr"><h1 className="b" style={{ fontSize: 16 }}>Archive</h1></div>
+        <div className="hdr"><h1 className="b" style={{ fontSize: 17 }}>Archive</h1></div>
         <div className="pad row gap2 wrapf">
           <Field label="From"><input type="date" className="inp" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
           <Field label="To"><input type="date" className="inp" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
@@ -3175,7 +3182,7 @@ function RotationTable({ size }) {
 function GroupRotation() {
   return (
     <div className="card">
-      <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Group Rotations</h2></div>
+      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Group Rotations</h2></div>
       <div className="pad">
         <p className="muted xs" style={{ marginBottom: 8 }}>
           Reference rotation using generic letters — assign real wrestlers to A/B/C… at practice.
@@ -3220,7 +3227,7 @@ function PracticeDayPage({ practiceId }) {
           <div>
             <div className="row gap2 wrapf">
               <button className="link xs" onClick={() => go("dashboard")}>← Dashboard</button>
-              <span className="b" style={{ fontSize: 16 }}>Practice{practice.practiceNumber ? ` #${practice.practiceNumber}` : ""}</span>
+              <span className="b" style={{ fontSize: 17 }}>Practice{practice.practiceNumber ? ` #${practice.practiceNumber}` : ""}</span>
               {practice.reconciledAt ? <Pill label="Reconciled" tone="emerald" /> : <Pill label="Plan in progress" tone="slate" />}
             </div>
             <p className="muted xs" style={{ marginTop: 4 }}>
@@ -3318,7 +3325,7 @@ function PracticeDayPage({ practiceId }) {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Practice Plan</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Practice Plan</h2></div>
         <div className="pad row between wrapf">
           <span className="muted xs">
             {practice.rows.length === 0
@@ -3332,7 +3339,7 @@ function PracticeDayPage({ practiceId }) {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Weigh-In</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Weigh-In</h2></div>
         <div className="pad row between wrapf">
           <span className="muted xs">
             {sheet ? `${sheetCount(sheet)} on the sheet` : "No weigh-in sheet for this practice."}
@@ -3421,7 +3428,7 @@ function PracticeEditor({ practiceId }) {
         <div className="row between wrapf">
           <div className="row gap2 wrapf">
             <button className="link xs" onClick={() => go("practice")}>← Plans</button>
-            <span className="b" style={{ fontSize: 16 }}>{fmtLong(practice.date)}</span>
+            <span className="b" style={{ fontSize: 17 }}>{fmtLong(practice.date)}</span>
             {practice.reconciledAt ? <Pill label="Reconciled" tone="emerald" /> : <Pill label="Plan in progress" tone="slate" />}
           </div>
           <div className="row gap2 wrapf">
@@ -3503,7 +3510,7 @@ function PracticeEditor({ practiceId }) {
 
       <div className="card">
         <div className="hdr">
-          <h2 className="sb" style={{ fontSize: 14 }}>Practice Flow</h2>
+          <h2 className="sb" style={{ fontSize: 15 }}>Practice Flow</h2>
           <span className="muted xs">{totalMinutes} min total</span>
         </div>
         <div className="divide">
@@ -3708,7 +3715,7 @@ function CompetitionDetail({ competitionId }) {
             <div>
               <div className="row gap2 wrapf">
                 <button className="link xs" onClick={() => go("dashboard")}>← Dashboard</button>
-                <span className="b" style={{ fontSize: 16 }}>{competition.name}</span>
+                <span className="b" style={{ fontSize: 17 }}>{competition.name}</span>
                 <Pill label={competition.type === "DUAL" ? "Dual Meet" : "Tournament"} tone="orange" />
               </div>
               <p className="muted xs" style={{ marginTop: 4 }}>
@@ -3770,7 +3777,7 @@ function CompetitionDetail({ competitionId }) {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Weigh-In Sheet</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Weigh-In Sheet</h2></div>
         <div className="pad row between wrapf">
           <span className="muted xs">
             {sheet
@@ -3798,7 +3805,7 @@ function CompetitionDetail({ competitionId }) {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Weigh-Ins</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Weigh-Ins</h2></div>
         <div className="divide">
           {active.map((w) => (
             <CompetitionWeighInRow key={w.id} competitionId={competition.id} wrestler={w} weighIn={weighInFor(w.id)} />
@@ -3913,7 +3920,7 @@ function SyllabusPage() {
   return (
     <div className="card">
       <div className="hdr">
-        <h1 className="b" style={{ fontSize: 16 }}>Syllabus</h1>
+        <h1 className="b" style={{ fontSize: 17 }}>Syllabus</h1>
         <div className="row gap2 wrapf">
           <ImportExport
             label="Syllabus"
@@ -4215,7 +4222,7 @@ function ItemDetail({ item, editing, situations, positions, onEdit, onCancelEdit
         <button className="btn btn-ghost btn-sm" onClick={onEdit}>Edit</button>
       </div>
       <div className="row gap2 wrapf" style={{ marginBottom: 6 }}>
-        <span className="b" style={{ fontSize: 15 }}>{item.name}</span>
+        <span className="b" style={{ fontSize: 16 }}>{item.name}</span>
         {item.structure && <Pill label={CATEGORY_LABEL[item.structure]} tone="slate" />}
       </div>
       <div className="muted tiny" style={{ marginBottom: 10 }}>
@@ -4270,7 +4277,7 @@ function CueRow({ itemId, cue }) {
 
   return (
     <li className="row gap2 wrapf" style={{ padding: "2px 0" }}>
-      <span className="muted" style={{ fontSize: 11 }}>•</span>
+      <span className="muted" style={{ fontSize: 12 }}>•</span>
       {!editing ? (
         <>
           <span className="xs">{cue.text}</span>
@@ -4299,7 +4306,7 @@ function OrganizeCategoriesPage() {
     <div className="grid" style={{ gap: 20 }}>
       <div className="card">
         <div className="hdr">
-          <h1 className="b" style={{ fontSize: 16 }}>Organize Categories</h1>
+          <h1 className="b" style={{ fontSize: 17 }}>Organize Categories</h1>
           <button className="link xs" onClick={() => go("syllabus")}>← Back to Syllabus</button>
         </div>
         <p className="pad muted xs">
@@ -4335,7 +4342,7 @@ function OrganizeCategoryList({ field, title, labels, initialValues }) {
 
   return (
     <div className="card">
-      <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>{title}</h2></div>
+      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>{title}</h2></div>
       <div className="divide">
         {values.map((v, i) => (
           <div
@@ -4347,7 +4354,7 @@ function OrganizeCategoryList({ field, title, labels, initialValues }) {
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => onDrop(i)}
           >
-            <span className="muted" style={{ fontSize: 14 }}>≡</span>
+            <span className="muted" style={{ fontSize: 15 }}>≡</span>
             <span className="xs">{(labels && labels[v]) || v}</span>
           </div>
         ))}
@@ -4408,7 +4415,7 @@ function RosterPage() {
     <div className="grid" style={{ gap: 16 }}>
       <div className="card">
         <div className="hdr">
-          <h1 className="b" style={{ fontSize: 16 }}>Roster</h1>
+          <h1 className="b" style={{ fontSize: 17 }}>Roster</h1>
           <div className="row gap2 wrapf">
             <TeamSelect value={teamFilter} onChange={setTeamFilter} allLabel="All Teams" style={{ maxWidth: 180 }} />
             <ImportExport
@@ -4617,7 +4624,7 @@ function WeighInListPage() {
   return (
     <div className="grid" style={{ gap: 20 }}>
       <div className="card">
-        <div className="hdr"><h1 className="b" style={{ fontSize: 16 }}>Weigh-In</h1></div>
+        <div className="hdr"><h1 className="b" style={{ fontSize: 17 }}>Weigh-In</h1></div>
         <div className="pad row gap2 wrapf">
           <input type="date" className="inp" style={{ maxWidth: 160 }} value={date} onChange={(e) => setDate(e.target.value)} />
           <input className="inp" style={{ maxWidth: 180 }} placeholder="Event name" value={event} onChange={(e) => setEvent(e.target.value)} />
@@ -4633,7 +4640,7 @@ function WeighInListPage() {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Active</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Active</h2></div>
         <div className="divide">
           {active.map((s) => (
             <div key={s.id} className="pad row between wrapf click" onClick={() => go("weighin", "detail", s.id)}>
@@ -4649,7 +4656,7 @@ function WeighInListPage() {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Archived</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Archived</h2></div>
         <div className="divide">
           {archived.map((s) => (
             <div key={s.id} className="pad row between wrapf click" onClick={() => go("weighin", "detail", s.id)}>
@@ -4731,7 +4738,7 @@ function WeighInSheetForm({ sheetId }) {
             <div>
               <div className="row gap2 wrapf">
                 <button className="link xs" onClick={() => go("weighin")}>← Weigh-Ins</button>
-                <span className="b" style={{ fontSize: 16 }}>{fmtLong(sheet.date)}</span>
+                <span className="b" style={{ fontSize: 17 }}>{fmtLong(sheet.date)}</span>
                 <Pill label={editable ? "Active" : "Archived"} tone={editable ? "slate" : "emerald"} />
               </div>
               <p className="muted xs" style={{ marginTop: 4 }}>{sheetSubtitle(sheet) || "No event details yet"}</p>
@@ -4920,7 +4927,7 @@ function HistoryPage() {
   return (
     <div className="grid" style={{ gap: 20 }}>
       <div className="card">
-        <div className="hdr"><h1 className="b" style={{ fontSize: 16 }}>History</h1></div>
+        <div className="hdr"><h1 className="b" style={{ fontSize: 17 }}>History</h1></div>
       </div>
       {HISTORY_CATEGORIES.map((category) => {
         const records = state.history
@@ -4937,7 +4944,7 @@ function HistoryPage() {
 function HistoryCategoryList({ category, title, records }) {
   return (
     <div className="card">
-      <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>{title}</h2></div>
+      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>{title}</h2></div>
       <div className="divide">
         {records.map((r) => <HistoryRow key={r.id} record={r} />)}
         {records.length === 0 && <div className="pad muted xs">No champions recorded yet.</div>}
@@ -5048,7 +5055,7 @@ function SettingsPage() {
   return (
     <div className="grid" style={{ gap: 16 }}>
       <div className="card">
-        <div className="hdr"><h1 className="b" style={{ fontSize: 16 }}>Customize Appearance</h1></div>
+        <div className="hdr"><h1 className="b" style={{ fontSize: 17 }}>Customize Appearance</h1></div>
       </div>
 
       <div className="card pad">
@@ -5162,7 +5169,7 @@ function TeamsCard() {
 
   return (
     <div className="card">
-      <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Teams</h2></div>
+      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Teams</h2></div>
       <div className="divide">
         {teams.map((t) => {
           const c = counts(t.id);
@@ -5249,7 +5256,7 @@ function QuickLinksCard() {
 
   return (
     <div className="card">
-      <div className="hdr"><h2 className="sb" style={{ fontSize: 14 }}>Quick Links</h2></div>
+      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Quick Links</h2></div>
       {links.length > 0 && (
         <div className="divide">
           {links.map((l) => (
