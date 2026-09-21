@@ -1359,6 +1359,15 @@ function migrateLinks(saved) {
   return { ...saved, links: [] };
 }
 
+/** Drops cues left blank by editing one down to nothing and saving (fixed at the source, but strips any that already exist). */
+function migrateEmptyCues(saved) {
+  if (!saved.syllabus || !saved.syllabus.some((i) => (i.cues || []).some((c) => !c.text || !c.text.trim()))) return saved;
+  return {
+    ...saved,
+    syllabus: saved.syllabus.map((i) => ({ ...i, cues: i.cues.filter((c) => c.text && c.text.trim()) })),
+  };
+}
+
 function migrateNumbering(saved) {
   if (saved.numberingRevision === NUMBERING_REVISION) return saved;
   return {
@@ -1447,7 +1456,7 @@ const AppCtx = React.createContext(null);
 const useApp = () => React.useContext(AppCtx);
 
 function runMigrations(saved) {
-  return migrateLinks(migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved)))))));
+  return migrateEmptyCues(migrateLinks(migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))))));
 }
 
 const APP_STATE_TABLE = "app_state";
@@ -1637,6 +1646,7 @@ function makeApi(update) {
       }));
     },
     addCue(itemId, text) {
+      if (!text.trim()) return;
       update((s) => ({
         ...s,
         syllabus: s.syllabus.map((i) =>
@@ -1645,6 +1655,7 @@ function makeApi(update) {
       }));
     },
     updateCue(itemId, cueId, text) {
+      if (!text.trim()) return;
       update((s) => ({
         ...s,
         syllabus: s.syllabus.map((i) =>
@@ -4291,7 +4302,19 @@ function CueRow({ itemId, cue }) {
       ) : (
         <>
           <input className="inp" style={{ maxWidth: 200 }} placeholder="Coaching cue" value={draft} onChange={(e) => setDraft(e.target.value)} />
-          <button className="btn btn-g btn-sm" onClick={() => { api.updateCue(itemId, cue.id, draft); setEditing(false); }}>Save</button>
+          <button
+            className="btn btn-g btn-sm"
+            onClick={() => {
+              // Saving it blank would leave a bulleted row with no text and no
+              // way to tell what it was — clearing it and saving reads as "get
+              // rid of this," so treat it as a delete instead.
+              if (draft.trim()) api.updateCue(itemId, cue.id, draft.trim());
+              else api.deleteCue(itemId, cue.id);
+              setEditing(false);
+            }}
+          >
+            Save
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={() => { setDraft(cue.text); setEditing(false); }}>Cancel</button>
           <button className="btn btn-ghost btn-sm iconbtn" onClick={() => api.deleteCue(itemId, cue.id)}>Delete</button>
         </>
