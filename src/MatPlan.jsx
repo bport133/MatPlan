@@ -4280,7 +4280,12 @@ function CueRow({ itemId, cue }) {
       <span className="muted" style={{ fontSize: 12 }}>•</span>
       {!editing ? (
         <>
-          <span className="xs">{cue.text}</span>
+          {/* flex-basis: 0 (not auto) is what actually matters here — auto sizes
+              the item to its full unwrapped text width for the flex-wrap line-fit
+              check, so a long cue got bumped to its own line below an orphaned
+              bullet, with Edit pushed below that. A 0 basis with grow: 1 makes it
+              fill the line instead and wrap its text in place. */}
+          <span className="xs" style={{ flex: "1 1 0%", minWidth: 0 }}>{cue.text}</span>
           <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit</button>
         </>
       ) : (
