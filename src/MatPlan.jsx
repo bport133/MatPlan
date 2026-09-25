@@ -291,6 +291,17 @@ const CSS = `
   }
   .mp .rte, .mp .rte-content, .mp .rte-readonly { border: none !important; background: none !important; padding: 0 !important; }
   .mp .prow { break-inside: avoid; }
+  /*
+   * The practice header (Team/Practice #/Start/End/Duration) normally
+   * stacks a label above its value for a comfortable editing target, but on
+   * paper that's twice the height it needs — put the value right after the
+   * label on the same line instead.
+   */
+  .mp .thead { margin-top: 6px !important; }
+  .mp .thead > div { padding: 2px 8px !important; }
+  .mp .thead .seclbl { display: inline !important; padding-top: 0 !important; margin-bottom: 0 !important; }
+  .mp .thead .seclbl::after { content: ": "; }
+  .mp .thead p { display: inline !important; }
 }
 `;
 
