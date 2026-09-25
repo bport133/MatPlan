@@ -303,6 +303,12 @@ const CSS = `
   .mp .thead .seclbl::after { content: ": "; }
   .mp .thead .seclbl.no-colon::after { content: ""; }
   .mp .thead p { display: inline !important; }
+  /* An unreconciled (still-editable) practice renders Team/Practice #/Start/
+     End as <input>/<select> rather than <p> — those are replaced elements,
+     so width: 100% from .inp still forces them onto their own line even
+     under display: inline; drop the width so they size to their content
+     and stay on the label's line instead. */
+  .mp .thead input, .mp .thead select { display: inline !important; width: auto !important; }
 }
 `;
 
