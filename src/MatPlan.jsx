@@ -2513,10 +2513,10 @@ function Dashboard() {
                         style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: e.date < todayK ? 0.45 : 1 }}
                       >
                         {fmtDay(e.date)}
-                        {!teamFilter && teamName(e.teamId) ? <span className="muted"> · {teamName(e.teamId)}</span> : null}
+                        {teamName(e.teamId) ? <span className="muted"> · {teamName(e.teamId)}</span> : null}
                       </span>
                       <span className="pill" style={eventPillStyle(colorOf(e.teamId), e.kind === "Practice" ? "practice" : "competition")}>
-                        {e.kind}
+                        {e.kind === "Practice" && e.num != null ? `Practice #${e.num}` : e.kind}
                       </span>
                     </div>
                     {e.kind === "Practice" ? (
