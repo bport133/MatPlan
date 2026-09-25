@@ -3610,7 +3610,7 @@ function PracticeEditor({ practiceId }) {
           </div>
           <div>
             <span className="seclbl">Duration</span>
-            <p className="xs sb">
+            <p className="xs">
               {windowMinutes != null ? `${windowMinutes} min` : `${totalMinutes} min planned`}
               {windowMinutes != null && windowMinutes !== totalMinutes && (
                 <span className="muted"> · {totalMinutes} min planned on the mat</span>
