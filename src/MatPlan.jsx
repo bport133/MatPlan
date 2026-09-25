@@ -3610,7 +3610,10 @@ function PracticeEditor({ practiceId }) {
           </div>
           <div>
             <span className="seclbl">Duration</span>
-            <p className="xs">
+            {/* No .xs while editable — the other fields are showing as .inp inputs then (15px,
+                matching the .mp base size), and .xs (13px) reads small next to them. Once
+                reconciled they're all plain .xs text again, Duration included. */}
+            <p className={editable ? undefined : "xs"}>
               {windowMinutes != null ? `${windowMinutes} min` : `${totalMinutes} min planned`}
               {windowMinutes != null && windowMinutes !== totalMinutes && (
                 <span className="muted"> · {totalMinutes} min planned on the mat</span>
