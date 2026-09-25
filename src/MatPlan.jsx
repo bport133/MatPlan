@@ -2487,7 +2487,7 @@ function Dashboard() {
 
       <div className="card no-print">
         <div className="hdr">
-          <h2 className="b" style={{ fontSize: 17 }}>Next 3 Weeks</h2>
+          <h2 className="b" style={{ fontSize: 17 }}>Look Ahead</h2>
           <div className="row gap2 wrapf">
             <span className="muted tiny upper">Team</span>
             <TeamSelect value={teamFilter} onChange={setTeamFilter} allLabel="All Teams" style={{ maxWidth: 180 }} />
