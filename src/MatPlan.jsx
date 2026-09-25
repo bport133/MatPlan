@@ -95,6 +95,11 @@ const CSS = `
 .thead .inp { width: 100%; }
 @media (max-width: 640px) { .prow-head { grid-template-columns: 1fr auto; } .prow-dur { grid-column: 2; } }
 
+/* Roster row: Name | Team | Weight | Level | actions, each in its own
+   column so they line up down the list instead of bunching to the left. */
+.wrow { display: grid; grid-template-columns: 1.3fr 1.3fr 110px 130px auto; gap: 10px; align-items: center; }
+@media (max-width: 720px) { .wrow { grid-template-columns: 1fr; gap: 4px; } }
+
 .muted { color: var(--muted); }
 .tiny { font-size: 12px; }
 .xs { font-size: 13px; }
@@ -1138,6 +1143,10 @@ const WRESTLER_DETAIL_FIELDS = [
 ];
 const emptyWrestlerDetails = () => Object.fromEntries(WRESTLER_DETAIL_FIELDS.map((f) => [f, ""]));
 
+const WRESTLER_LEVELS = [1, 2, 3, 4];
+const LEVEL_LABEL = { 1: "Beginner", 2: "Intermediate", 3: "Advanced", 4: "Elite" };
+const LEVEL_TONE = { 1: "slate", 2: "blue", 3: "amber", 4: "emerald" };
+
 const teamColor = (team) => (team && team.color) || TEAM_COLORS[0];
 
 /** Hex to rgba, for tinting a pill without washing out the dark background. */
@@ -2011,7 +2020,7 @@ function makeApi(update) {
     reopenPractice: (id) => patchIn("practices", id, { reconciledAt: null }),
 
     /* ---- roster ---- */
-    createWrestler(name, weightClass, teamIds) {
+    createWrestler(name, weightClass, teamIds, level) {
       update((s) => {
         const list = (teamIds || []).filter(Boolean);
         return {
@@ -2019,7 +2028,7 @@ function makeApi(update) {
           wrestlers: [
             ...s.wrestlers,
             {
-              id: uid(), name, weightClass, active: true,
+              id: uid(), name, weightClass, active: true, level: level || null,
               teamIds: list.length ? list : [(s.teams[0] && s.teams[0].id)].filter(Boolean),
               order: nextOrder(s.wrestlers),
               ...emptyWrestlerDetails(),
@@ -3259,9 +3268,6 @@ function GroupRotation() {
     <div className="card">
       <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Group Rotations</h2></div>
       <div className="pad">
-        <p className="muted xs" style={{ marginBottom: 8 }}>
-          Reference rotation using generic letters — assign real wrestlers to A/B/C… at practice.
-        </p>
         <div className="grid g2">
           <RotationTable size={3} />
           <RotationTable size={4} />
@@ -4463,6 +4469,7 @@ function RosterPage() {
   const teamName = useTeamName();
   const [name, setName] = useState("");
   const [weightClass, setWeightClass] = useState("");
+  const [level, setLevel] = useState("");
   const [teamFilter, setTeamFilter] = useState(null);
   const [newTeamId, setNewTeamId] = useState((state.teams[0] || {}).id || null);
 
@@ -4498,9 +4505,10 @@ function RosterPage() {
 
   function addWrestler() {
     if (!name.trim()) return;
-    api.createWrestler(name.trim(), weightClass ? Number(weightClass) : null, [teamFilter || newTeamId]);
+    api.createWrestler(name.trim(), weightClass ? Number(weightClass) : null, [teamFilter || newTeamId], level ? Number(level) : null);
     setName("");
     setWeightClass("");
+    setLevel("");
   }
 
   return (
@@ -4533,6 +4541,10 @@ function RosterPage() {
         <TeamSelect value={teamFilter || newTeamId} onChange={setNewTeamId} style={{ maxWidth: 180 }} />
         <input className="inp" style={{ maxWidth: 200 }} placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWrestler()} />
         <input className="inp numsm" placeholder="Weight (lbs)" value={weightClass} onChange={(e) => setWeightClass(e.target.value)} />
+        <select className="inp" style={{ maxWidth: 150 }} value={level} onChange={(e) => setLevel(e.target.value)}>
+          <option value="">Level (optional)</option>
+          {WRESTLER_LEVELS.map((l) => <option key={l} value={l}>{l} - {LEVEL_LABEL[l]}</option>)}
+        </select>
         <button className="btn btn-g btn-sm" onClick={addWrestler}>+ Add Wrestler</button>
       </div>
     </div>
@@ -4542,16 +4554,16 @@ function RosterPage() {
 function WrestlerRow({ wrestler, showTeam }) {
   const { state, api } = useApp();
   const [editing, setEditing] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [name, setName] = useState(wrestler.name);
   const [weightClass, setWeightClass] = useState(wrestler.weightClass != null ? String(wrestler.weightClass) : "");
+  const [level, setLevel] = useState(wrestler.level != null ? String(wrestler.level) : "");
   const [active, setActive] = useState(wrestler.active);
 
   return (
     <div>
-      <div className="pad row between wrapf">
+      <div className="pad wrow">
+        <span className="sb xs">{wrestler.name}</span>
         <div className="row gap2 wrapf">
-          <span className="sb xs">{wrestler.name}</span>
           {showTeam && teamsOf(wrestler).map((id) => {
             const t = state.teams.find((x) => x.id === id);
             if (!t) return null;
@@ -4559,13 +4571,15 @@ function WrestlerRow({ wrestler, showTeam }) {
               <span key={id} className="pill" style={eventPillStyle(teamColor(t), "practice")}>{t.name}</span>
             );
           })}
+        </div>
+        <div className="row gap2 wrapf">
           {wrestler.weightClass != null && <Pill label={`${wrestler.weightClass} lbs`} tone="slate" />}
           {!wrestler.active && <Pill label="Inactive" tone="red" />}
         </div>
+        <div>
+          {wrestler.level != null && <Pill label={LEVEL_LABEL[wrestler.level] || wrestler.level} tone={LEVEL_TONE[wrestler.level] || "slate"} />}
+        </div>
         <div className="row gap2">
-          <button className="btn btn-ghost btn-sm" onClick={() => setDetailsOpen((v) => !v)}>
-            {detailsOpen ? "Hide Details" : "Details"}
-          </button>
           {!editing && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit</button>}
         </div>
       </div>
@@ -4575,13 +4589,22 @@ function WrestlerRow({ wrestler, showTeam }) {
           <input className="inp" style={{ maxWidth: 200 }} placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} />
           <TeamCheckboxes wrestler={wrestler} />
           <input className="inp numsm" placeholder="Weight (lbs)" value={weightClass} onChange={(e) => setWeightClass(e.target.value)} />
+          <select className="inp" style={{ maxWidth: 150 }} value={level} onChange={(e) => setLevel(e.target.value)}>
+            <option value="">Level (none)</option>
+            {WRESTLER_LEVELS.map((l) => <option key={l} value={l}>{l} - {LEVEL_LABEL[l]}</option>)}
+          </select>
           <label className="row gap2 xs">
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active
           </label>
           <button
             className="btn btn-g btn-sm"
             onClick={() => {
-              api.updateWrestler(wrestler.id, { name, weightClass: weightClass ? Number(weightClass) : null, active });
+              api.updateWrestler(wrestler.id, {
+                name,
+                weightClass: weightClass ? Number(weightClass) : null,
+                level: level ? Number(level) : null,
+                active,
+              });
               setEditing(false);
             }}
           >
@@ -4596,101 +4619,6 @@ function WrestlerRow({ wrestler, showTeam }) {
           />
         </div>
       )}
-
-      {detailsOpen && <WrestlerDetailsPanel wrestler={wrestler} onClose={() => setDetailsOpen(false)} />}
-    </div>
-  );
-}
-
-/**
- * The club registration/roster fields that don't fit the compact roster
- * row: personal info, parent/guardian and emergency contacts, medical and
- * insurance, mailing address, and dues. Collapsed by default so the roster
- * stays scannable during practice; opened per wrestler via "Details".
- */
-function WrestlerDetailsPanel({ wrestler, onClose }) {
-  const { api } = useApp();
-  const [form, setForm] = useState(() =>
-    Object.fromEntries(WRESTLER_DETAIL_FIELDS.map((f) => [f, wrestler[f] || ""]))
-  );
-  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
-
-  function save() {
-    api.updateWrestler(wrestler.id, form);
-    onClose();
-  }
-
-  return (
-    <div className="pad" style={{ paddingTop: 0 }}>
-      <div className="ib pad" style={{ display: "grid", gap: 14 }}>
-        <div>
-          <span className="seclbl">Personal</span>
-          <div className="grid g3" style={{ marginTop: 6 }}>
-            <Field label="First Name"><input className="inp" value={form.firstName} onChange={set("firstName")} /></Field>
-            <Field label="Last Name"><input className="inp" value={form.lastName} onChange={set("lastName")} /></Field>
-            <Field label="Date of Birth"><input type="date" className="inp" value={form.dob} onChange={set("dob")} /></Field>
-            <Field label="Gender"><input className="inp" value={form.gender} onChange={set("gender")} /></Field>
-            <Field label="Age"><input className="inp" value={form.age} onChange={set("age")} /></Field>
-            <Field label="Grade"><input className="inp" value={form.grade} onChange={set("grade")} /></Field>
-          </div>
-        </div>
-
-        <div>
-          <span className="seclbl">Parent / Guardian</span>
-          <div className="grid g3" style={{ marginTop: 6 }}>
-            <Field label="Parent Name"><input className="inp" value={form.parentName} onChange={set("parentName")} /></Field>
-            <Field label="Parent Cell"><input className="inp" value={form.parentCell} onChange={set("parentCell")} /></Field>
-            <Field label="Email"><input className="inp" value={form.email} onChange={set("email")} /></Field>
-          </div>
-        </div>
-
-        <div>
-          <span className="seclbl">Emergency Contact</span>
-          <div className="grid g3" style={{ marginTop: 6 }}>
-            <Field label="Name"><input className="inp" value={form.emergencyContactName} onChange={set("emergencyContactName")} /></Field>
-            <Field label="Cell"><input className="inp" value={form.emergencyContactPhone} onChange={set("emergencyContactPhone")} /></Field>
-          </div>
-        </div>
-
-        <div>
-          <span className="seclbl">Medical &amp; Insurance</span>
-          <div className="grid g3" style={{ marginTop: 6 }}>
-            <Field label="Allergies"><input className="inp" value={form.allergies} onChange={set("allergies")} /></Field>
-            <Field label="Insurance Provider"><input className="inp" value={form.insurance} onChange={set("insurance")} /></Field>
-            <Field label="Policy #"><input className="inp" value={form.policyNumber} onChange={set("policyNumber")} /></Field>
-          </div>
-        </div>
-
-        <div>
-          <span className="seclbl">Address</span>
-          <div className="grid g4" style={{ marginTop: 6 }}>
-            <Field label="Street Address" style={{ gridColumn: "span 2" }}>
-              <input className="inp" value={form.address} onChange={set("address")} />
-            </Field>
-            <Field label="City"><input className="inp" value={form.city} onChange={set("city")} /></Field>
-            <Field label="State"><input className="inp" value={form.state} onChange={set("state")} /></Field>
-          </div>
-          <div className="grid g4" style={{ marginTop: 8 }}>
-            <Field label="Zip"><input className="inp" value={form.zip} onChange={set("zip")} /></Field>
-          </div>
-        </div>
-
-        <div>
-          <span className="seclbl">Dues</span>
-          <div className="grid g3" style={{ marginTop: 6 }}>
-            <Field label="Discount Name"><input className="inp" value={form.discountName} onChange={set("discountName")} /></Field>
-            <Field label="Discount Amount"><input className="inp" value={form.discountAmount} onChange={set("discountAmount")} /></Field>
-            <Field label="Refunds"><input className="inp" value={form.refunds} onChange={set("refunds")} /></Field>
-            <Field label="Net"><input className="inp" value={form.net} onChange={set("net")} /></Field>
-            <Field label="List"><input className="inp" value={form.list} onChange={set("list")} /></Field>
-          </div>
-        </div>
-
-        <div className="row gap2">
-          <button className="btn btn-g btn-sm" onClick={save}>Save Details</button>
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>Close</button>
-        </div>
-      </div>
     </div>
   );
 }
