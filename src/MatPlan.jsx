@@ -2637,7 +2637,7 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
                 onAdd={() => { setPreview(null); setAddDay((cur) => (cur === key ? null : key)); }}
                 onSelect={(kind, id) => { setAddDay(null); setPreview((cur) => (cur && cur.id === id ? null : { kind, id })); }}
                 previewId={preview && preview.id}
-                teamLabel={teamFilter ? null : teamName}
+                teamLabel={teamName}
                 colorOf={colorOf}
                 go={go}
               />
@@ -2898,7 +2898,7 @@ function CalendarDay({ dateStr, dayNum, inMonth, isToday, selected, entry, onAdd
             onClick={() => onSelect("practice", p.id)}
             onDoubleClick={() => go("dashboard", "practiceday", p.id)}
           >
-            {teamLabel && teamLabel(p.teamId) ? `${teamLabel(p.teamId)} ` : ""}#{p.practiceNumber || "—"}
+            {teamLabel && teamLabel(p.teamId) ? `${teamLabel(p.teamId)} ` : ""}Practice #{p.practiceNumber || "—"}
           </button>
           <DeletePracticeButton practiceId={p.id} label="✕" />
         </div>
