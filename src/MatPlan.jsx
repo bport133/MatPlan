@@ -207,6 +207,70 @@ const CSS = `
 .rte-content { min-height: 44px; padding: .5rem .6rem; font-size: .875rem; color: var(--text); outline: none; }
 .rte-content ul, .rte-readonly ul { list-style: disc; margin: 4px 0; padding-left: 20px; }
 .rte-readonly { padding: .5rem .6rem; background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; }
+
+/*
+ * Print / Save as PDF used to capture the page exactly as shown on screen —
+ * dark theme, logo banner, tab bar, and every editing control included. This
+ * strips it down to the content being printed: white background instead of
+ * the dark theme (nobody wants a near-black practice plan on paper), the
+ * brand header and nav hidden, every action button hidden (.no-print covers
+ * anything else that isn't already a .btn), and form controls (inputs,
+ * selects, the rich text toolbar) rendered as plain text instead of boxes —
+ * an unreconciled practice's editable fields still print cleanly instead of
+ * showing raw input/select chrome. break-inside: avoid keeps a single
+ * practice row from splitting across a page break, so pages fill up cleanly
+ * toward one page instead of leaving a stray line at the top of a second.
+ */
+@media print {
+  .no-print, .mp .btn, .mp .rte-toolbar { display: none !important; }
+  @page { margin: 12mm; }
+  /*
+   * Redefining the theme's own custom properties (rather than overriding
+   * color on individual classes) is what actually reaches every component:
+   * .flyout-item, .muted, .inp and friends all declare "color: var(--text)"
+   * or "var(--muted)" directly, which beats an inherited color from a
+   * broader rule regardless of !important — inheritance only applies where
+   * nothing more specific is declared. Redefining the variables themselves
+   * means every one of those declarations resolves to a print-safe color
+   * automatically, with nothing to enumerate or miss. Each needs its own
+   * !important: Customize Appearance writes the user's chosen text/background/
+   * accent colors as an inline style on this same element, and a plain inline
+   * style otherwise beats a non-important stylesheet rule no matter the media
+   * query or source order.
+   */
+  .mp {
+    --bg: #fff !important;
+    --panel: #fff !important;
+    --panel2: #fff !important;
+    --raised: #fff !important;
+    --line: #ccc !important;
+    --text: #000 !important;
+    --muted: #555 !important;
+    --texture: none !important;
+    background: #fff !important;
+    font-size: 11px !important;
+  }
+  body { background: #fff !important; }
+  .mp .card, .mp .ib {
+    background-color: #fff !important;
+    background-image: none !important;
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+    clip-path: none !important;
+  }
+  .mp .ibhdr { background: #f3f3f3 !important; }
+  .mp .cal-cell.out { background: #f3f3f3 !important; color: #888 !important; }
+  .mp .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .mp .inp, .mp select.inp, .mp textarea.inp {
+    border: none !important;
+    background: none !important;
+    padding: 0 !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .mp .rte, .mp .rte-content, .mp .rte-readonly { border: none !important; background: none !important; padding: 0 !important; }
+  .mp .prow { break-inside: avoid; }
+}
 `;
 
 
@@ -2260,7 +2324,7 @@ function makeApi(update) {
 
 function AppHeader({ logoDataUrl }) {
   return (
-    <div className="card mb5" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
+    <div className="card mb5 no-print" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
       <div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, lineHeight: 1 }}>
           <span style={{ fontFamily: "var(--font-brand)", fontSize: 40, letterSpacing: ".03em" }}>
@@ -2299,7 +2363,7 @@ function TabNav() {
   const { view, go } = useApp();
   const { user, signOut } = useAuth();
   return (
-    <div className="card mb5" style={{ padding: 4, marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+    <div className="card mb5 no-print" style={{ padding: 4, marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <div className="tabs">
         {TABS.map((t) => (
           <button key={t.tab} className={`tab${view.tab === t.tab ? " on" : ""}`} onClick={() => go(t.tab)}>
@@ -3540,7 +3604,7 @@ function PracticeEditor({ practiceId }) {
         </div>
 
         {editable && (
-          <div className="pad row gap2 wrapf">
+          <div className="pad row gap2 wrapf no-print">
             <SyllabusPicker
               options={leafOptions}
               onSelect={(id) => api.addRowFromSyllabus(practice.id, id)}
@@ -3582,7 +3646,7 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast }) {
   }
 
   return (
-    <div className="pad">
+    <div className="pad prow">
       <div className="prow-head">
         <div className="row gap2 wrapf">
           {item ? (
