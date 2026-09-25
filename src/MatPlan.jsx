@@ -211,12 +211,12 @@ const CSS = `
  * and more columns fit, so each tile settles narrower instead of the row
  * just growing taller and taller.
  */
-.qlinks-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.qlinks-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .qlink-tile {
   display: flex; align-items: center; justify-content: center; text-align: center;
-  padding: 18px 14px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--line);
+  padding: 9px 10px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--line);
   color: var(--text); text-decoration: none; font-family: var(--font-heading); font-weight: 600;
-  font-size: 16px; transition: .15s;
+  font-size: 13px; transition: .15s;
 }
 .qlink-tile:hover { border-color: var(--accent); color: var(--accent); background: var(--raised); }
 
@@ -2485,7 +2485,7 @@ function Dashboard() {
     <div className="grid" style={{ gap: 20 }}>
       <QuickLinksStrip />
 
-      <div className="card">
+      <div className="card no-print">
         <div className="hdr">
           <h2 className="b" style={{ fontSize: 17 }}>Next 3 Weeks</h2>
           <div className="row gap2 wrapf">
@@ -2543,7 +2543,7 @@ function QuickLinksStrip() {
   const { state } = useApp();
   if (!state.links.length) return null;
   return (
-    <div className="card pad">
+    <div className="card pad no-print">
       <div className="qlinks-grid">
         {state.links.map((l) => (
           <a key={l.id} href={hrefFor(l.url)} target="_blank" rel="noopener noreferrer" className="qlink-tile">
