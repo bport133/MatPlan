@@ -204,6 +204,22 @@ const CSS = `
 .flyout-item.chosen .arrow { opacity: 1; }
 .flyout-empty { padding: 20px 8px; color: var(--muted); font-size: 13px; }
 
+/*
+ * auto-fit + minmax does the "large and spread out with a few links, denser
+ * once more are added" behavior on its own: with 1-3 links there's only room
+ * for 1-3 columns, so each tile stretches to fill the row; add more links
+ * and more columns fit, so each tile settles narrower instead of the row
+ * just growing taller and taller.
+ */
+.qlinks-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.qlink-tile {
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: 18px 14px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--line);
+  color: var(--text); text-decoration: none; font-family: var(--font-heading); font-weight: 600;
+  font-size: 16px; transition: .15s;
+}
+.qlink-tile:hover { border-color: var(--accent); color: var(--accent); background: var(--raised); }
+
 .rte { border: 1px solid var(--line); border-radius: 3px; background: var(--panel2); overflow: hidden; }
 .rte-toolbar { display: flex; gap: 2px; padding: 4px; border-bottom: 1px solid var(--line); background: var(--panel); }
 .rte-btn { width: 26px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; border: 1px solid transparent; background: transparent; color: var(--text); font-size: 12px; font-weight: 700; line-height: 1; }
@@ -2509,15 +2525,14 @@ function QuickLinksStrip() {
   const { state } = useApp();
   if (!state.links.length) return null;
   return (
-    <div className="card pad row gap2 wrapf">
-      {state.links.map((l, i) => (
-        <React.Fragment key={l.id}>
-          {i > 0 && <span className="muted">·</span>}
-          <a href={hrefFor(l.url)} target="_blank" rel="noopener noreferrer" className="link xs">
+    <div className="card pad">
+      <div className="qlinks-grid">
+        {state.links.map((l) => (
+          <a key={l.id} href={hrefFor(l.url)} target="_blank" rel="noopener noreferrer" className="qlink-tile">
             {l.label}
           </a>
-        </React.Fragment>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
