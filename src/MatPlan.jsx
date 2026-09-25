@@ -301,6 +301,7 @@ const CSS = `
   .mp .thead > div { padding: 2px 8px !important; }
   .mp .thead .seclbl { display: inline !important; padding-top: 0 !important; margin-bottom: 0 !important; }
   .mp .thead .seclbl::after { content: ": "; }
+  .mp .thead .seclbl.no-colon::after { content: ""; }
   .mp .thead p { display: inline !important; }
 }
 `;
@@ -3594,7 +3595,10 @@ function PracticeEditor({ practiceId }) {
               <p className="xs">{practice.endTime || <span className="muted">—</span>}</p>
             )}
           </div>
-          <div className="thead-wide">
+          <div>
+            <span className="seclbl no-colon">Cascading Messages</span>
+          </div>
+          <div>
             <span className="seclbl">Duration</span>
             <p className="xs sb">
               {windowMinutes != null ? `${windowMinutes} min` : `${totalMinutes} min planned`}
@@ -3603,15 +3607,19 @@ function PracticeEditor({ practiceId }) {
               )}
             </p>
           </div>
-        </div>
-
-        <div style={{ marginTop: 10 }}>
-          <span className="seclbl">Cascading Messages</span>
-          {editable ? (
-            <textarea className="inp" style={{ marginTop: 4 }} value={dayNotes} onChange={(e) => setDayNotes(e.target.value)} onBlur={saveHeader} />
-          ) : (
-            <p className="xs" style={{ marginTop: 4 }}>{practice.dayNotes || <span className="muted">No messages.</span>}</p>
-          )}
+          <div className="thead-wide" style={{ textAlign: "left" }}>
+            {editable ? (
+              <textarea className="inp" value={dayNotes} onChange={(e) => setDayNotes(e.target.value)} onBlur={saveHeader} />
+            ) : practice.dayNotes ? (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {practice.dayNotes.split("\n").filter((line) => line.trim()).map((line, i) => (
+                  <li key={i} className="xs">{line}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="xs muted">No messages.</p>
+            )}
+          </div>
         </div>
       </div>
 
