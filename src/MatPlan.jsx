@@ -2606,7 +2606,7 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
           <span className="muted tiny upper">Team</span>
           <TeamSelect value={teamFilter} onChange={onTeamFilterChange} allLabel="All Teams" style={{ maxWidth: 180 }} />
         </div>
-        <h2 className="sb" style={{ fontSize: 15, textAlign: "center", whiteSpace: "nowrap" }}>{monthLabel}</h2>
+        <h2 className="sb" style={{ fontSize: 17, textAlign: "center", whiteSpace: "nowrap" }}>{monthLabel}</h2>
         <div className="row gap2 wrapf" style={{ justifyContent: "flex-end" }}>
           <button className="btn btn-ghost btn-sm" onClick={() => step(-1)}>← Prev</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setCursor({ year: now.getFullYear(), month: now.getMonth() + 1 })}>Today</button>
