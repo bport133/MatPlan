@@ -3009,6 +3009,7 @@ const TABS = [
   { tab: "practice", label: "Practice Plans" },
   { tab: "roster", label: "Squad" },
   { tab: "weighin", label: "Weigh-In" },
+  { tab: "competitions", label: "Competitions" },
   { tab: "history", label: "Hall of Fame" },
 ];
 
@@ -4667,6 +4668,80 @@ function dualsRecordFor(competition) {
   return { w, l, t, label: t ? `${w}-${l}-${t}` : `${w}-${l}`, tone: w >= l ? "emerald" : "red" };
 }
 
+/** Every competition in one season (Sept 1–Aug 31, keyed by seasonKey),
+ * optionally narrowed to one team — falsy teamId means every team, the
+ * same "no filter" convention as onRosterOf/weightClassesForTeams. */
+function seasonCompetitions(state, season, teamId) {
+  return state.competitions.filter((c) => seasonKey(c.date) === season && (!teamId || c.teamId === teamId));
+}
+
+/** Same accounting as dualsRecordFor, pooled across every dual in every
+ * DUAL competition passed in instead of just one event's duals. */
+function seasonDualRecord(competitions) {
+  let w = 0, l = 0, t = 0;
+  for (const c of competitions) {
+    if (c.type !== "DUAL") continue;
+    for (const d of c.duals || []) {
+      const o = dualOutcome(d);
+      if (!o) continue;
+      if (o.label === "Win") w++;
+      else if (o.label === "Loss") l++;
+      else t++;
+    }
+  }
+  if (w + l + t === 0) return null;
+  return { w, l, t, label: t ? `${w}-${l}-${t}` : `${w}-${l}`, tone: w >= l ? "emerald" : "red" };
+}
+
+function seasonTournamentPlacements(competitions) {
+  return competitions
+    .filter((c) => c.type === "TOURNAMENT")
+    .map((c) => ({ competitionId: c.id, name: c.name, date: c.date, placement: c.teamPlacement, teamScore: c.teamScore }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+/** Per-wrestler win/loss across the season, pooling dual bouts (by
+ * homeWrestler, exhibitions excluded — they don't count toward a record
+ * any more than they count toward a dual's team score) with tournament
+ * weight-class results (by their own wrestler field). Matching is by
+ * name text, same as a bout's homeWrestler always has been — both fields
+ * share the "dual-roster-names"-style datalist so a coach picking from
+ * the roster gets consistent spelling across duals and tournaments. */
+function seasonIndividualRecords(competitions) {
+  const byName = new Map();
+  const bucket = (name) => {
+    const key = name.trim();
+    if (!key) return null;
+    if (!byName.has(key)) byName.set(key, { name: key, dualW: 0, dualL: 0, tourneyW: 0, tourneyL: 0, placements: [] });
+    return byName.get(key);
+  };
+  for (const c of competitions) {
+    if (c.type === "DUAL") {
+      for (const d of c.duals || []) {
+        for (const b of d.bouts || []) {
+          if (!b.homeWrestler || !b.result) continue;
+          const rec = bucket(b.homeWrestler);
+          if (!rec) continue;
+          if (b.result === "W") rec.dualW++;
+          else rec.dualL++;
+        }
+      }
+    } else if (c.type === "TOURNAMENT") {
+      for (const r of c.results || []) {
+        if (!r.wrestler) continue;
+        const rec = bucket(r.wrestler);
+        if (!rec) continue;
+        rec.tourneyW += r.wins || 0;
+        rec.tourneyL += r.losses || 0;
+        if (r.placement) rec.placements.push({ competitionId: c.id, name: c.name, date: c.date, weightClass: r.weightClass, placement: r.placement });
+      }
+    }
+  }
+  return Array.from(byName.values())
+    .map((r) => ({ ...r, w: r.dualW + r.tourneyW, l: r.dualL + r.tourneyL }))
+    .sort((a, b) => b.w - a.w || a.name.localeCompare(b.name));
+}
+
 function CompetitionDetail({ competitionId }) {
   const { state, api, go } = useApp();
   const teamName = useTeamName();
@@ -5026,9 +5101,11 @@ function TournamentResultsSection({ competition }) {
   const classes = Array.isArray(competition.weightClasses)
     ? competition.weightClasses
     : weightClassesForTeams(state, competition.teamId ? [competition.teamId] : []);
+  const rosterNames = state.wrestlers.filter((w) => w.active && onRosterOf(w, competition.teamId)).sort((a, b) => a.order - b.order);
 
   return (
     <div className="card">
+      <datalist id="tourney-roster-names">{rosterNames.map((r) => <option key={r.id} value={r.name} />)}</datalist>
       <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Tournament Results</h2></div>
       <div className="pad row gap2 wrapf">
         <Field label="Team Score">
@@ -5073,7 +5150,7 @@ function TournamentResultRow({ competitionId, result, classes }) {
         <option value="">Wt</option>
         {classes.map((c) => <option key={c} value={c}>{c}</option>)}
       </select>
-      <input className="inp" style={{ maxWidth: 160 }} placeholder="Wrestler" value={wrestler} onChange={(e) => setWrestler(e.target.value)} onBlur={() => save({ wrestler })} />
+      <input className="inp" style={{ maxWidth: 160 }} list="tourney-roster-names" placeholder="Wrestler" value={wrestler} onChange={(e) => setWrestler(e.target.value)} onBlur={() => save({ wrestler })} />
       <input className="inp numsm" placeholder="Place" value={placement} onChange={(e) => setPlacement(e.target.value)} onBlur={() => save({ placement: placement.trim() || null })} />
       <Field label="W"><input className="inp numsm" value={wins} onChange={(e) => setWins(e.target.value)} onBlur={() => save({ wins: wins.trim() ? Number(wins) : null })} /></Field>
       <Field label="L"><input className="inp numsm" value={losses} onChange={(e) => setLosses(e.target.value)} onBlur={() => save({ losses: losses.trim() ? Number(losses) : null })} /></Field>
@@ -5106,6 +5183,125 @@ function CompetitionWeighInRow({ competitionId, wrestler, weighIn }) {
       <Field label="Notes" style={{ flex: 1, minWidth: 160 }}>
         <input className="inp" placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={save} />
       </Field>
+    </div>
+  );
+}
+
+/* ======================== SEASON COMPETITIONS SUMMARY ======================== */
+
+function CompetitionsSummaryPage() {
+  const { state, go } = useApp();
+  const multiTeam = state.teams.length > 1;
+  const currentSeason = seasonKey(todayStr());
+  const seasons = Array.from(new Set(state.competitions.map((c) => seasonKey(c.date))));
+  if (!seasons.includes(currentSeason)) seasons.push(currentSeason);
+  seasons.sort((a, b) => b - a);
+  const [season, setSeason] = useState(currentSeason);
+  const [teamId, setTeamId] = useState("");
+
+  const competitions = seasonCompetitions(state, season, teamId || null);
+  const dualRecord = seasonDualRecord(competitions);
+  const placements = seasonTournamentPlacements(competitions);
+  const individuals = seasonIndividualRecords(competitions);
+
+  const dualRows = [];
+  for (const c of competitions) {
+    if (c.type !== "DUAL") continue;
+    for (const d of c.duals || []) {
+      dualRows.push({
+        id: d.id,
+        competitionId: c.id,
+        date: c.date,
+        opponent: d.opponent || "Opponent",
+        score: d.teamScore != null && d.oppScore != null ? `${d.teamScore}-${d.oppScore}` : null,
+        outcome: dualOutcome(d),
+      });
+    }
+  }
+  dualRows.sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  return (
+    <div className="grid" style={{ gap: 20 }}>
+      <div className="card pad">
+        <div className="row between wrapf">
+          <h1 className="b" style={{ fontSize: 17 }}>Competitions</h1>
+          <div className="row gap2 wrapf">
+            <select className="inp" value={season} onChange={(e) => setSeason(Number(e.target.value))}>
+              {seasons.map((s) => <option key={s} value={s}>Season {seasonLabel(s)}</option>)}
+            </select>
+            {multiTeam && (
+              <select className="inp" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+                <option value="">All Teams</option>
+                {state.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
+        <p className="muted xs" style={{ marginTop: 4 }}>
+          {competitions.length} competition{competitions.length === 1 ? "" : "s"} recorded this season.
+        </p>
+      </div>
+
+      <div className="card">
+        <div className="hdr row between">
+          <h2 className="sb" style={{ fontSize: 15 }}>Dual Meet Record</h2>
+          {dualRecord && <Pill label={dualRecord.label} tone={dualRecord.tone} />}
+        </div>
+        <div className="divide">
+          {dualRows.map((r) => (
+            <div key={r.id} className="pad row between wrapf click" onClick={() => go("dashboard", "competition", r.competitionId)}>
+              <span className="row gap2 wrapf">
+                <span className="muted xs" style={{ minWidth: 90 }}>{fmtLong(r.date)}</span>
+                <span className="sb xs">{r.opponent}</span>
+              </span>
+              <span className="row gap2 wrapf">
+                {r.score && <span className="muted xs">{r.score}</span>}
+                {r.outcome ? <Pill label={r.outcome.label} tone={r.outcome.tone} /> : <span className="muted xs">No score yet</span>}
+              </span>
+            </div>
+          ))}
+          {dualRows.length === 0 && <div className="pad muted xs">No dual meets recorded this season.</div>}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Tournament Placements</h2></div>
+        <div className="divide">
+          {placements.map((p) => (
+            <div key={p.competitionId} className="pad row between wrapf click" onClick={() => go("dashboard", "competition", p.competitionId)}>
+              <span className="row gap2 wrapf">
+                <span className="muted xs" style={{ minWidth: 90 }}>{fmtLong(p.date)}</span>
+                <span className="sb xs">{p.name}</span>
+              </span>
+              <span className="row gap2 wrapf">
+                {p.teamScore != null && <span className="muted xs">{p.teamScore} pts</span>}
+                {p.placement ? <Pill label={p.placement} tone="slate" /> : <span className="muted xs">No placement yet</span>}
+              </span>
+            </div>
+          ))}
+          {placements.length === 0 && <div className="pad muted xs">No tournaments recorded this season.</div>}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Individual Records</h2></div>
+        <div className="divide">
+          {individuals.map((r) => (
+            <div key={r.name} className="pad row between wrapf">
+              <span className="sb xs">{r.name}</span>
+              <span className="row gap2 wrapf">
+                <Pill label={`Dual ${r.dualW}-${r.dualL}`} tone="slate" />
+                <Pill label={`Tourney ${r.tourneyW}-${r.tourneyL}`} tone="slate" />
+                <Pill label={`Total ${r.w}-${r.l}`} tone={r.w >= r.l ? "emerald" : "red"} />
+                {r.placements.map((p, i) => (
+                  <Pill key={i} label={`${p.placement}${p.weightClass ? ` @ ${p.weightClass}` : ""}`} tone="amber" />
+                ))}
+              </span>
+            </div>
+          ))}
+          {individuals.length === 0 && <div className="pad muted xs">No individual results recorded this season.</div>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -6963,6 +7159,8 @@ function Screen() {
       return <RosterPage />;
     case "weighin":
       return view.sub === "detail" ? <WeighInSheetForm key={view.id} sheetId={view.id} /> : <WeighInListPage />;
+    case "competitions":
+      return <CompetitionsSummaryPage />;
     case "history":
       return <HistoryPage />;
     case "settings":
