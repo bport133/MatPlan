@@ -2513,10 +2513,16 @@ function Dashboard() {
                         style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: e.date < todayK ? 0.45 : 1 }}
                       >
                         {fmtDay(e.date)}
-                        {teamName(e.teamId) ? <span className="muted"> · {teamName(e.teamId)}</span> : null}
                       </span>
-                      <span className="pill" style={eventPillStyle(colorOf(e.teamId), e.kind === "Practice" ? "practice" : "competition")}>
-                        {e.kind === "Practice" ? `Practice${e.num != null ? ` #${e.num}` : ""}` : e.name || "Competition"}
+                      <span className="row gap2" style={{ flexShrink: 0 }}>
+                        {teamName(e.teamId) && (
+                          <span className="pill" style={eventPillStyle(colorOf(e.teamId), "practice")}>
+                            {teamName(e.teamId)}
+                          </span>
+                        )}
+                        <span className="pill" style={eventPillStyle(colorOf(e.teamId), e.kind === "Practice" ? "practice" : "competition")}>
+                          {e.kind === "Practice" ? `Practice${e.num != null ? ` #${e.num}` : ""}` : e.name || "Competition"}
+                        </span>
                       </span>
                     </div>
                     {e.kind === "Practice" ? (
