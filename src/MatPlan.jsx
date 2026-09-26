@@ -207,7 +207,12 @@ const CSS = `
    above keeps that growth (and the delete button beside it) from ever
    spilling past the day's own column into the next one. */
 .cal-cell .pill { display: block; max-width: 100%; white-space: normal; word-break: break-word; text-align: left; }
-.cal-evt { display: flex; align-items: center; gap: .35rem; min-width: 0; }
+/* flex-wrap here matters: without it, the delete-confirm prompt ("Delete
+   this plan? Delete Cancel") — much wider than the plain ✕ button it
+   replaces — has nowhere to go but to squeeze the pill down to zero width
+   on the same line, which wraps its text one letter per line. Wrapping
+   lets the confirm prompt drop to its own line under the pill instead. */
+.cal-evt { display: flex; align-items: center; gap: .35rem; min-width: 0; flex-wrap: wrap; }
 .cal-evt > .pill { flex: 1; min-width: 0; }
 .cal-evt .iconbtn { padding: 1px 5px; font-size: 10px; line-height: 1.4; flex-shrink: 0; }
 .cal-add { align-self: flex-start; margin-top: auto; }
