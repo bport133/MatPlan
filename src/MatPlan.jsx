@@ -1452,6 +1452,16 @@ function teamsOf(wrestler) {
 
 const onRosterOf = (wrestler, teamId) => !teamId || teamsOf(wrestler).includes(teamId);
 
+/** A weigh-in sheet's linked teams, tolerating the old single-`teamId` shape. */
+function sheetTeamIds(sheet) {
+  if (Array.isArray(sheet.teamIds)) return sheet.teamIds;
+  return sheet.teamId ? [sheet.teamId] : [];
+}
+
+/** Empty teamIds means "every team" — same no-filter convention as onRosterOf. */
+const onRosterOfAny = (wrestler, teamIds) =>
+  !teamIds || teamIds.length === 0 || teamsOf(wrestler).some((id) => teamIds.includes(id));
+
 /** Team name for display, tolerating rows whose team was deleted. */
 function useTeamName() {
   const { state } = useApp();
@@ -2408,7 +2418,10 @@ function makeApi(update) {
       const id = uid();
       const clean = (v) => (v && String(v).trim() ? String(v).trim() : null);
       update((s) => {
-        const teamId = input.teamId || (s.teams[0] && s.teams[0].id) || null;
+        // No team(s) specified means "every team" (see onRosterOfAny) rather
+        // than silently guessing the first team in the list — a sheet made
+        // from a Practice/Competition still passes its own single teamId.
+        const teamIds = Array.isArray(input.teamIds) ? input.teamIds : input.teamId ? [input.teamId] : [];
         return {
           ...s,
           weighInSheets: [
@@ -2418,15 +2431,16 @@ function makeApi(update) {
               event: clean(input.event),
               homeTeam: clean(input.homeTeam),
               visitorTeam: clean(input.visitorTeam),
-              teamId,
+              teamIds,
               competitionId: input.competitionId || null,
               practiceId: input.practiceId || null,
               archivedAt: null, createdAt: new Date().toISOString(),
-              // Seeded from the team's active roster so a sheet opens ready to
-              // weigh instead of empty. Anyone out for this event is scratched
-              // on the sheet, which never touches the roster itself.
+              // Seeded from the selected team(s)' active roster so a sheet
+              // opens ready to weigh instead of empty. Anyone out for this
+              // event is scratched on the sheet, which never touches the
+              // roster itself.
               entries: input.populate === false ? [] : s.wrestlers
-                .filter((w) => w.active && onRosterOf(w, teamId))
+                .filter((w) => w.active && onRosterOfAny(w, teamIds))
                 .sort((a, b) => a.order - b.order)
                 .map((w, i) => ({
                   id: uid(), weightClass: w.weightClass ?? null, wrestlerId: w.id,
@@ -2446,13 +2460,16 @@ function makeApi(update) {
         visitorTeam: data.visitorTeam.trim() || null,
       });
     },
+    updateWeighInTeams(sid, teamIds) {
+      patchIn("weighInSheets", sid, { teamIds });
+    },
     populateFromRoster(sid) {
       update((s) => {
         const sheet = s.weighInSheets.find((x) => x.id === sid);
         if (!sheet) return s;
         const already = new Set(sheet.entries.map((e) => e.wrestlerId).filter(Boolean));
         const toAdd = s.wrestlers
-          .filter((w) => w.active && !already.has(w.id) && onRosterOf(w, sheet.teamId))
+          .filter((w) => w.active && !already.has(w.id) && onRosterOfAny(w, sheetTeamIds(sheet)))
           .sort((a, b) => a.order - b.order);
         if (!toAdd.length) return s;
         let order = nextOrder(sheet.entries);
@@ -3328,6 +3345,24 @@ function TeamCheckboxes({ wrestler }) {
   );
 }
 
+/** Generic team multi-select — an empty `value` means "every team". */
+function TeamIdsCheckboxes({ value, onChange }) {
+  const { state } = useApp();
+  const teams = [...state.teams].sort((a, b) => a.order - b.order);
+  const toggle = (id) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+
+  return (
+    <div className="row gap2 wrapf">
+      {teams.map((t) => (
+        <label key={t.id} className="row gap2 xs" style={{ whiteSpace: "nowrap" }}>
+          <input type="checkbox" checked={value.includes(t.id)} onChange={() => toggle(t.id)} />
+          {t.name}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function DeleteCompetitionButton({ competitionId, label = "Delete", onDeleted }) {
   const { state, api, showUndoToast } = useApp();
   const competition = state.competitions.find((c) => c.id === competitionId);
@@ -3423,7 +3458,7 @@ function ArchivePage() {
   );
 }
 
-function RichTextEditor({ value, onChange, onBlur }) {
+function RichTextEditor({ value, onChange, onBlur, autoBullet }) {
   const ref = useRef(null);
   const lastValue = useRef(null);
   const [active, setActive] = useState({});
@@ -3466,6 +3501,25 @@ function RichTextEditor({ value, onChange, onBlur }) {
     handleInput();
   }
 
+  function handleFocus() {
+    refreshActive();
+    // innerHTML (not innerText) — an already-seeded empty bullet
+    // (<ul><li><br></li></ul>) has empty text but must not be re-toggled:
+    // insertUnorderedList flips OFF a list it's already inside, and a
+    // second focus firing for the same click (which does happen) would
+    // otherwise immediately undo the bullet it just added.
+    if (!autoBullet || !ref.current || ref.current.innerHTML.trim() !== "") return;
+    // Deferred a tick so the browser finishes placing the caret from this
+    // same focus (click/tab) before insertUnorderedList acts on the
+    // selection — running it synchronously here can act on a stale range.
+    setTimeout(() => {
+      if (document.activeElement === ref.current && ref.current.innerHTML.trim() === "") {
+        document.execCommand("insertUnorderedList");
+        refreshActive();
+      }
+    }, 0);
+  }
+
   function handlePaste(e) {
     e.preventDefault();
     const text = e.clipboardData.getData("text/plain");
@@ -3505,7 +3559,7 @@ function RichTextEditor({ value, onChange, onBlur }) {
         onPaste={handlePaste}
         onKeyUp={refreshActive}
         onMouseUp={refreshActive}
-        onFocus={refreshActive}
+        onFocus={handleFocus}
         onBlur={onBlur}
       />
     </div>
@@ -4072,7 +4126,7 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast }) {
       <div style={{ marginTop: 8 }}>
         <Field label="Teaching Cues / Progression">
           {editable ? (
-            <RichTextEditor value={teachingCues} onChange={setTeachingCues} onBlur={() => save()} />
+            <RichTextEditor value={teachingCues} onChange={setTeachingCues} onBlur={() => save()} autoBullet />
           ) : teachingCues ? (
             <div className="xs rte-readonly" dangerouslySetInnerHTML={{ __html: teachingCues }} />
           ) : (
@@ -4935,8 +4989,8 @@ function RosterPage() {
   }
 
   function addWrestler() {
-    if (!name.trim()) return;
-    api.createWrestler(name.trim(), weightClass ? Number(weightClass) : null, [teamFilter || newTeamId], level ? Number(level) : null);
+    if (!name.trim() || !level) return;
+    api.createWrestler(name.trim(), weightClass ? Number(weightClass) : null, [teamFilter || newTeamId], Number(level));
     setName("");
     setWeightClass("");
     setLevel("");
@@ -4973,10 +5027,10 @@ function RosterPage() {
         <input className="inp" style={{ maxWidth: 200 }} placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWrestler()} />
         <input className="inp numsm" placeholder="Weight (lbs)" value={weightClass} onChange={(e) => setWeightClass(e.target.value)} />
         <select className="inp" style={{ maxWidth: 150 }} value={level} onChange={(e) => setLevel(e.target.value)}>
-          <option value="">Level (optional)</option>
+          <option value="">Level</option>
           {WRESTLER_LEVELS.map((l) => <option key={l} value={l}>{l} - {LEVEL_LABEL[l]}</option>)}
         </select>
-        <button className="btn btn-g btn-sm" onClick={addWrestler}>+ Bring Up a Wrestler</button>
+        <button className="btn btn-g btn-sm" disabled={!name.trim() || !level} onClick={addWrestler}>+ Bring Up a Wrestler</button>
       </div>
     </div>
   );
@@ -5072,6 +5126,7 @@ function WeighInListPage() {
   const [event, setEvent] = useState("");
   const [homeTeam, setHomeTeam] = useState("");
   const [visitorTeam, setVisitorTeam] = useState("");
+  const [teamIds, setTeamIds] = useState([]);
 
   const active = state.weighInSheets.filter((s) => !s.archivedAt).sort((a, b) => b.date.localeCompare(a.date));
   const archived = state.weighInSheets.filter((s) => s.archivedAt).sort((a, b) => b.date.localeCompare(a.date));
@@ -5080,17 +5135,24 @@ function WeighInListPage() {
     <div className="grid" style={{ gap: 20 }}>
       <div className="card">
         <div className="hdr"><h1 className="b" style={{ fontSize: 17 }}>Weigh-In</h1></div>
-        <div className="pad row gap2 wrapf">
-          <input type="date" className="inp" style={{ maxWidth: 160 }} value={date} onChange={(e) => setDate(e.target.value)} />
-          <input className="inp" style={{ maxWidth: 180 }} placeholder="Event name" value={event} onChange={(e) => setEvent(e.target.value)} />
-          <input className="inp" style={{ maxWidth: 160 }} placeholder="Home team" value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)} />
-          <input className="inp" style={{ maxWidth: 160 }} placeholder="Visitor team" value={visitorTeam} onChange={(e) => setVisitorTeam(e.target.value)} />
-          <button
-            className="btn btn-g btn-sm"
-            onClick={() => go("weighin", "detail", api.createWeighInSheet({ date, event, homeTeam, visitorTeam }))}
-          >
-            + New Weigh-In
-          </button>
+        <div className="pad grid" style={{ gap: 10 }}>
+          <div className="row gap2 wrapf">
+            <input type="date" className="inp" style={{ maxWidth: 160 }} value={date} onChange={(e) => setDate(e.target.value)} />
+            <input className="inp" style={{ maxWidth: 180 }} placeholder="Event name" value={event} onChange={(e) => setEvent(e.target.value)} />
+            <input className="inp" style={{ maxWidth: 160 }} placeholder="Home team" value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)} />
+            <input className="inp" style={{ maxWidth: 160 }} placeholder="Visitor team" value={visitorTeam} onChange={(e) => setVisitorTeam(e.target.value)} />
+            <button
+              className="btn btn-g btn-sm"
+              onClick={() => go("weighin", "detail", api.createWeighInSheet({ date, event, homeTeam, visitorTeam, teamIds }))}
+            >
+              + New Weigh-In
+            </button>
+          </div>
+          <div className="row gap2 wrapf">
+            <span className="muted xs">Pull roster from:</span>
+            <TeamIdsCheckboxes value={teamIds} onChange={setTeamIds} />
+            {teamIds.length === 0 && <span className="muted xs">(none checked = every team)</span>}
+          </div>
         </div>
       </div>
 
@@ -5131,6 +5193,7 @@ function WeighInListPage() {
 
 function WeighInSheetForm({ sheetId }) {
   const { state, api, go, showUndoToast } = useApp();
+  const teamName = useTeamName();
   const sheet = state.weighInSheets.find((s) => s.id === sheetId);
   const [editingHeader, setEditingHeader] = useState(false);
   const [date, setDate] = useState(sheet ? sheet.date : todayStr());
@@ -5148,6 +5211,8 @@ function WeighInSheetForm({ sheetId }) {
   }
 
   const editable = !sheet.archivedAt;
+  const teamIds = sheetTeamIds(sheet);
+  const rosterTeamsLabel = teamIds.length ? teamIds.map((id) => teamName(id)).filter(Boolean).join(", ") : "All Teams";
   const rosterNames = state.wrestlers.filter((w) => w.active).sort((a, b) => a.order - b.order);
 
   const byClass = new Map();
@@ -5195,6 +5260,7 @@ function WeighInSheetForm({ sheetId }) {
                 <button className="link xs" onClick={() => go("weighin")}>← Weigh-Ins</button>
                 <span className="b" style={{ fontSize: 17 }}>{fmtLong(sheet.date)}</span>
                 <Pill label={editable ? "Upcoming Weigh-Ins" : "Past Weigh-Ins"} tone={editable ? "slate" : "emerald"} icon={editable ? <ClockIcon /> : <CheckIcon />} />
+                <Pill label={`Roster: ${rosterTeamsLabel}`} tone="slate" />
               </div>
               <p className="muted xs" style={{ marginTop: 4 }}>{sheetSubtitle(sheet) || "No event details yet"}</p>
             </div>
@@ -5229,6 +5295,10 @@ function WeighInSheetForm({ sheetId }) {
                 onChange={(e) => setVisitorTeam(e.target.value)}
                 onBlur={() => api.updateWeighInHeader(sheet.id, { date, event, homeTeam, visitorTeam })}
               />
+            </Field>
+            <Field label="Roster from" style={{ gridColumn: "1 / -1" }}>
+              <TeamIdsCheckboxes value={teamIds} onChange={(next) => api.updateWeighInTeams(sheet.id, next)} />
+              <span className="muted xs">None checked pulls from every team.</span>
             </Field>
             <div className="row gap2">
               <button className="btn btn-g btn-sm" onClick={() => setEditingHeader(false)}>Done</button>
