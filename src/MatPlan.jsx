@@ -3045,10 +3045,6 @@ function AppHeader({ logoDataUrl }) {
   );
 }
 
-/** Linked from the nav bar, not routed through `go` — it's a Claude Docs
- * page, not a screen inside this app. */
-const USER_GUIDE_URL = "https://claude.ai/code/artifact/9969aeeb-0954-45da-9769-1ff0c63dcc98";
-
 const TABS = [
   { tab: "dashboard", label: "Command Center" },
   { tab: "syllabus", label: "Playbook" },
@@ -3078,9 +3074,9 @@ function TabNav() {
             Sign Out
           </button>
         )}
-        <a className="btn btn-ghost btn-sm" href={USER_GUIDE_URL} target="_blank" rel="noopener noreferrer" title="Open the User Guide">
+        <button className="btn btn-ghost btn-sm" title="Open the User Guide" onClick={() => go("guide")}>
           📖 User Guide
-        </a>
+        </button>
         <button className="btn btn-ghost btn-sm" title="Customize appearance" onClick={() => go("settings")}>
           ⚙ Customize
         </button>
@@ -6789,6 +6785,217 @@ function AddRecordForm({ category }) {
   );
 }
 
+/* ============================== USER GUIDE ============================== */
+
+function GuideSection({ title, children }) {
+  return (
+    <div className="card">
+      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>{title}</h2></div>
+      <div className="pad" style={{ display: "grid", gap: 12, fontSize: 14, lineHeight: 1.6 }}>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * A static, hand-written mirror of the "MatPlan User Guide" doc — kept as a
+ * first-class in-app page (rather than a link out to Claude Docs) so it
+ * opens as part of MatPlan itself, no external site or sign-in involved.
+ */
+function UserGuidePage() {
+  return (
+    <div className="grid" style={{ gap: 20 }}>
+      <div className="card pad">
+        <h1 className="b" style={{ fontSize: 17 }}>MatPlan User Guide</h1>
+        <p className="muted xs" style={{ marginTop: 4 }}>How the app fits together, page by page.</p>
+      </div>
+
+      <GuideSection title="How MatPlan Fits Together">
+        <p>
+          MatPlan has seven tabs — <b>Command Center, Playbook, Practice Plans, Squad, Weigh-In, Competitions, Hall of
+          Fame</b> — plus <b>Customize</b> in the top right. They aren't separate tools; they're views onto a small
+          number of connected lists, and almost everything you type in one place shows up automatically somewhere
+          else. The mental model:
+        </p>
+        <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li><b>Customize is upstream of everything.</b> Your Teams, their default Weight Class Sets, your program's name/logo/colors, and your Quick Links are all set here, and every other page reads from these rather than storing its own copy.</li>
+          <li><b>Squad and Playbook are your two source-of-truth lists.</b> Squad is <i>who</i> (your wrestlers). Playbook is <i>what</i> (your curriculum — techniques, drills, warm-ups). Creating a wrestler only happens on Squad. A technique is almost always pulled in from Playbook too — but with one exception: a Practice Plan row can also be typed as a one-off skill/drill right on the plan itself, without ever touching Playbook. It just won't be saved to the reusable library unless you separately add it there.</li>
+          <li><b>Everything else is built by combining Team + Squad + Playbook on a date.</b> A Practice Plan is a Team, a date, and a sequence of Playbook items. A Competition is a Team, a date, and (for a Dual Meet) Squad wrestlers matched up weight class by weight class. A Weigh-In Sheet is a Team's (or several Teams') Squad roster, checked in against a Weight Class Set on a date.</li>
+          <li><b>Command Center is the calendar view of all of it</b> — Practices, Competitions, and Team Events plotted on a month grid and a 3-week Look Ahead, filterable by Team.</li>
+          <li><b>Competitions is the season-wide rollup</b> — every competition's results pooled into one team record and per-wrestler stats, separate from any one Competition's own detail page.</li>
+          <li><b>Hall of Fame is the one place that's deliberately <i>not</i> connected to anything else</b> — a permanent record of past champions, entered by hand, that doesn't change when you edit your current roster or curriculum.</li>
+        </ol>
+        <p>
+          The sections below go page by page, but the throughline worth remembering: <b>fix something at the source
+          (Customize, Squad, or Playbook) and it's fixed everywhere that used it</b> — you're almost never editing
+          the same fact in two places.
+        </p>
+      </GuideSection>
+
+      <GuideSection title="Customize: The Foundation Everything Else Waterfalls From">
+        <p>
+          Customize (top-right button, titled "Customize Appearance" at the top of the page) is one long page with
+          several cards. It's worth understanding each one, because they all feed downstream:
+        </p>
+        <table>
+          <thead><tr><th>Set here</th><th>Shows up in</th></tr></thead>
+          <tbody>
+            <tr><td>Program name, logo, font, text/background/accent colors</td><td>Every page's header and printed sheets; a contrast warning appears if Text and Background are too close to read</td></tr>
+            <tr><td><b>Teams</b> (name, color)</td><td>The Team dropdown everywhere — Squad, Practice Plans, Competitions, Weigh-In Sheets; a wrestler's team-colored pill on Squad and the calendar</td></tr>
+            <tr><td><b>Team → Default Weight Class Set</b></td><td>The Weight Class options on that team's Squad roster, and the starting weight-class list for any new Weigh-In Sheet or Dual you create for that team</td></tr>
+            <tr><td><b>Weight Class Sets</b> (the shared library — e.g. "GRYWL Rookie," "NYWAY")</td><td>Assignable as any team's default, <i>and</i> separately pickable on any individual Weigh-In Sheet or Dual result — so one team can weigh in against a different league's brackets for a specific event without changing its everyday default</td></tr>
+            <tr><td><b>Team Baseline</b> (usual practice start/end time, location, address)</td><td>Pre-fills those fields whenever you add a new practice for that team from the calendar</td></tr>
+            <tr><td><b>Quick Links</b></td><td>The Quick Links strip at the top of Command Center</td></tr>
+          </tbody>
+        </table>
+        <p className="sb xs" style={{ marginBottom: -4 }}>A few things worth knowing:</p>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li><b>Weight Class Sets are reusable, not owned by one team.</b> Create "GRYWL Rookie," "GRYWL Cup," and "NYWAY" once here, then assign whichever is each team's usual default. A new set starts with a blank class list — type your own comma-separated list (lightest to heaviest); nothing gets silently filled in for you.</li>
+          <li><b>Deleting a team</b> moves its wrestlers, practices, competitions, and weigh-in sheets to another team rather than deleting them — you're never at risk of losing history by cleaning up your team list.</li>
+          <li><b>Practice numbering runs per team, per season.</b> A season runs September 1 through August 31; each team's first practice of a season is #1, and numbering automatically restarts at #1 for every team once a new season begins on September 1. Past practices already numbered aren't retroactively renumbered when a season rolls over — there's a "Renumber Practices by Team" button here if numbering ever needs fixing (locked-in practices keep their number).</li>
+        </ul>
+      </GuideSection>
+
+      <GuideSection title="Squad: Your Roster">
+        <p>Squad is the single list of wrestlers every other page draws from — there is no other place in the app to "create" a wrestler.</p>
+        <p className="sb xs" style={{ marginBottom: -4 }}>Three separate numbers, don't conflate them:</p>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li><b>Weight</b> — the wrestler's actual recorded body weight (a plain number you update as it changes).</li>
+          <li><b>Weight Class</b> — a dropdown, not free text, drawn from whichever Weight Class Set is that wrestler's team's default (Customize → Teams). If a wrestler is on more than one team, the dropdown offers the union of both teams' classes.</li>
+          <li><b>Level</b> — required when you bring up a new wrestler (JV/Varsity-style tiering); editable afterward.</li>
+        </ul>
+        <p><b>Adding a wrestler</b> requires a Name and a Level before "+ Bring Up a Wrestler" is clickable; Weight and Weight Class are optional at that point and can be filled in anytime via Edit.</p>
+        <p><b>Multi-team wrestlers:</b> the checkboxes under Edit let one wrestler belong to more than one team (a Cup kid who also wrestles Elite, say) — they can't be removed from their last team, so there's always at least one.</p>
+        <p><b>Import/export:</b> the CSV tools accept either your own simple format (Name, Teams, Weight Class, Active) or a 25-column club registration export (Team, First, Last, DOB, …, Weight, …) — the app detects which by column count. Importing matches existing wrestlers by full name and updates them rather than duplicating.</p>
+        <p className="sb xs" style={{ marginBottom: -4 }}>Where Squad shows up elsewhere:</p>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li>A <b>Weigh-In Sheet</b>'s "Populate from Squad" pulls in every active wrestler on the sheet's team(s), pre-filling each one's section using their <i>current</i> Squad Weight Class — but that's a one-time copy, not a live link; changing it on the sheet afterward never edits Squad, and editing Squad afterward never reshuffles a sheet that already has that wrestler on it.</li>
+          <li>A <b>Dual Meet</b>'s bout rows and <b>Competition weigh-ins</b> offer Squad names via autocomplete and default a wrestler's competition weight to their Squad Weight.</li>
+          <li><b>Practices and Competitions</b> filter which wrestlers show up (e.g. the Weigh-Ins list on a Competition) to only those active and on that competition's team.</li>
+        </ul>
+        <p className="muted">Best practice: keep Weight current for your active roster — it's the seed value nearly every downstream sheet starts from, so an out-of-date number there means re-typing it in three places on meet day instead of one.</p>
+      </GuideSection>
+
+      <GuideSection title="Playbook: Your Curriculum">
+        <p>Playbook is your library of techniques, drills, and concepts — the "what" that gets scheduled into Practice Plans. Every item has three levels of grouping:</p>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li><b>Position</b> — the broad phase (e.g. "Neutral Position," "Top Position," "Warm Up / Indy Drills").</li>
+          <li><b>Situation</b> — the concept grouping within a Position (e.g. "Neutral – Offense").</li>
+          <li><b>Structure</b> — how it's run in practice: Warm Up, Teach, Drill, Live, Break, or Game — shown as a colored pill everywhere the item appears.</li>
+        </ul>
+        <p>Each item can carry <b>Cues</b> (bulleted coaching points), a <b>Why</b>, and <b>Common Errors</b>, and Position/Situation values aren't a fixed list — they're whatever you've actually used, ordered via <b>Organize Categories</b> (drag-and-drop custom ordering, applied everywhere Position/Situation/Structure are shown or filtered).</p>
+        <p><b>Connection to Practice Plans:</b> when you add a row to a Practice Plan, you either pick an existing Playbook item (pulling in its name, cues, and category automatically) or type an ad-hoc one-off. Each row also has its own <b>Teaching Cues / Progression</b> rich-text box — separate from the Playbook item's own Cues — for what you actually want to say <i>that day</i>; it auto-starts with a bullet point the moment you click into it.</p>
+        <p>Import/export works the same way as Squad: CSV in, CSV out, matched by item name on import.</p>
+      </GuideSection>
+
+      <GuideSection title="Practice Plans: Where Team + Playbook Meet">
+        <p>A practice belongs to exactly one <b>Team</b> and one <b>date</b>, and is built as a sequence of rows pulled from <b>Playbook</b> (or typed ad-hoc). Two sub-tabs: <b>Plans</b> (everything upcoming or in progress) and <b>Archive</b> (reconciled practices — see below).</p>
+        <p className="sb xs" style={{ marginBottom: -4 }}>Two states, shown as a pill everywhere a practice appears:</p>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li><b>Building the Plan</b> — still editable, still being planned.</li>
+          <li><b>Locked In</b> — reconciled after the fact as the record of what actually happened. Reconciled practices keep the practice number they were archived under even if you later renumber — the archive is a historical record, not a live plan.</li>
+        </ul>
+        <p><b>Team Baseline</b> (set in Customize) pre-fills a new practice's start/end time, location, and address for that team; <b>Duplicate</b> copies an existing plan's rows onto a new date (defaults to +7 days) with the practice number auto-incremented — the fastest way to build next week's plan from a recurring structure.</p>
+        <p><b>Numbering runs per team, per season.</b> The season boundary is September 1 – August 31 (this page shows a "Season 2026–27"-style pill next to the date), and numbering restarts at #1 for each team on that date, independent of other teams' numbering.</p>
+        <p><b>Connection to Command Center:</b> every practice you create shows up immediately on the calendar and in Look Ahead, color-coded by team.</p>
+      </GuideSection>
+
+      <GuideSection title="Command Center: Calendar, Look Ahead, Quick Links, and Team Events">
+        <p>Command Center is the hub — it doesn't hold its own data, it visualizes Practices, Competitions, and Team Events from everywhere else.</p>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li><b>Quick Links strip</b> — the links you set up in Customize, one click away (each shows the site's favicon in the app itself).</li>
+          <li><b>Look Ahead</b> — the current week plus the next two (fixed Sunday–Saturday, not a rolling 21 days), filterable by Team, showing every practice, competition, and team event in that window with one click through to its detail.</li>
+          <li><b>Calendar grid</b> — the full month, click any day's <b>+</b> to add a Practice, Competition, or Event on that date. Adding a Competition here <b>automatically drafts its Weigh-In Sheet</b> in the background — pre-populated from that team's active Squad roster — so there's no separate step to remember; open the competition and the sheet is already waiting under "Open Weigh-In Sheet."</li>
+          <li><b>Team Events</b> — for anything on the calendar that's neither a practice nor a competition: Parents Meetings, fundraisers, team gatherings, banquets, and the like. Unlike a Practice or Competition, an Event's Team field can be set to "All Teams" since these often apply to the whole program. There's no separate plan or results to hold, so an event is edited and deleted right in its calendar preview rather than on its own page.</li>
+        </ul>
+        <p className="muted">Use the Team filter (on Look Ahead and, via each day's pill, on the grid) to check one team's schedule in isolation when you're running more than one.</p>
+      </GuideSection>
+
+      <GuideSection title="Competitions and Results">
+        <p>A Competition is either a <b>Dual Meet</b> or a <b>Tournament</b>, and the two track very different results:</p>
+        <p><b>Dual Meet — one competition can hold several duals.</b> A tri- or quad-meet is one Competition with multiple duals inside it ("+ Add Dual"), not several separate calendar entries. Each dual has:</p>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li>Its own opponent name, Your Score / Opponent Score, and notes — with a Win/Loss/Tie pill on the dual itself and an aggregate "Duals 2–1" record pill on the Competition header once more than one dual has scores.</li>
+          <li>A <b>bout table</b>, one row per weight class in that dual's Weight Class Set: your wrestler, their wrestler, result, and win type (pin/tech fall/major/decision/forfeit/injury default/DQ). Filling in just the two names ahead of time works as a <b>line-up / match-up sheet</b>; add the result and win type after the match. Switching the dual's weight-class list reconciles the table — existing rows for classes still in the list are kept, new classes get blank rows.</li>
+          <li><b>Exhibitions</b> — an open-ended add/remove list, not tied to the fixed weight-class lineup and never counted toward the score, for extra bouts coordinated outside the lineup.</li>
+          <li>Team score is always a manual entry, never auto-calculated from win types — scoring rules vary too much by league to get right automatically, and you may need to hand-adjust it anyway.</li>
+        </ul>
+        <p><b>Tournament — one team-wide table.</b> A row per weight class: wrestler, placement, wins, losses — plus an overall Team Score and Team Placement ("3rd of 12"), shown as a "Place: …" pill on the header. The Wrestler field offers the same roster-name autocomplete as a dual's bout rows, so a name is spelled the same way whether it comes from a dual or a tournament — that consistency is what lets the Competitions tab roll up one wrestler's record across both.</p>
+        <p><b>Connection to Weigh-In Sheets:</b> every Competition auto-drafts a linked Weigh-In Sheet the moment it's created (see Command Center, above) — open the Competition and it's right there under "Open Weigh-In Sheet," pre-populated from that team's Squad.</p>
+        <p><b>Connection to Squad:</b> the Weigh-Ins card on a Competition lists every active wrestler on that team for recording their actual weigh-in weight/class/notes; bout and result rows autocomplete against Squad names.</p>
+      </GuideSection>
+
+      <GuideSection title="Competitions Tab: The Season Rollup">
+        <p>
+          The <b>Competitions</b> tab (top nav) is a different page from any one Competition's own detail page — it
+          pools every competition in a season into one view, so you can see the season's overall record without
+          opening each meet individually:
+        </p>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li><b>Dual Meet Record</b> — the team's pooled Win-Loss-Tie across every dual in every Dual Meet competition that season. A Dual Meet competition scheduled on the calendar but not yet opened to add its duals still shows up here as "Scheduled — no duals added yet," rather than silently disappearing until results are entered.</li>
+          <li><b>Tournament Placements</b> — every tournament that season with its date, team score, and placement.</li>
+          <li><b>Individual Records</b> — per-wrestler Dual and Tournament win/loss totals (and their combined Total), plus their tournament placements, matched by name across both kinds of competition.</li>
+        </ul>
+        <p>A <b>Season</b> dropdown (September 1 – August 31, same boundary as practice numbering) and, if you run more than one team, a <b>Team</b> filter narrow the rollup — default is the current season and every team combined.</p>
+      </GuideSection>
+
+      <GuideSection title="Weigh-In Sheets">
+        <p>A Weigh-In Sheet can exist two ways: <b>auto-drafted</b> when you create a Competition (see above), or created directly from the <b>Weigh-In</b> tab for a standalone event. The standalone "+ New Weigh-In" form lets you pick:</p>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li><b>Which team(s)' roster to pull from</b> — check one, several, or leave all unchecked for every team.</li>
+          <li><b>Which Weight Class Set to use</b> — a saved set (from Customize), or a hand-typed custom list just for this one sheet, without touching the library or anyone's team default.</li>
+        </ul>
+        <p>The <b>Upcoming Weigh-Ins</b> list is sorted nearest date first. Each sheet's roster is grouped into weight-class sections (from its own weight-class list) plus an <b>Extra Wrestlers</b> section for anyone outside the assigned lineup. A wrestler already in a class section only shows Weight and Level on their row — the section heading already says the class, so it isn't repeated; a Class dropdown only appears in Extra Wrestlers, since that's the one place it isn't already implied and is how you'd assign one.</p>
+        <p>"<b>Populate from Squad</b>" adds anyone missing, defaulting their class from Squad's current Weight Class — a one-time copy you can freely edit afterward. <b>Scratch</b> removes someone from this event without touching Squad; <b>Archive</b> makes a sheet read-only once the event has passed. Export to CSV or Print/Save as PDF for a physical copy at the scale.</p>
+      </GuideSection>
+
+      <GuideSection title="Hall of Fame: The One Deliberately Disconnected Page">
+        <p>Hall of Fame is a permanent record of past champions (Intersectional/State, Section Qualifiers, Sectional Class champs), entered directly — name, weight, years. It's the one page that doesn't read from Squad or auto-populate from anything: a Hall of Fame entry survives a roster wipe, a season reset, or a wrestler graduating and being marked inactive, because it isn't <i>linked</i> to that wrestler's live Squad record at all, just a historical note that happens to share a name. Add entries by hand each season as results come in; nothing else in the app will ever silently create or remove one for you.</p>
+      </GuideSection>
+
+      <GuideSection title="Features That Cut Across Every Page">
+        <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
+          <li><b>Autosave, no Save button.</b> Every field saves on blur (click away) or on change — there's no explicit Save/Cancel step to remember, and no risk of losing an edit by navigating away mid-form.</li>
+          <li><b>Undo toast.</b> A destructive action (deleting a wrestler, a dual, a weigh-in sheet, a team event) shows a brief "Undo" toast that restores the exact prior state — use it instead of manually re-entering anything if you delete the wrong thing.</li>
+          <li><b>Global Search</b> (top nav) searches wrestlers, practices, competitions, and history records at once and jumps straight to the match — faster than drilling down through tabs when you know a name.</li>
+          <li><b>Multi-coach sync.</b> When signed in, MatPlan's data lives in one shared record that updates live for every signed-in coach — changes made on one device appear on another within about a second, no manual refresh or export/import needed. Invite additional coaches from the sign-in area.</li>
+          <li><b>Print / Save as PDF</b> is available on Practice Plans, Weigh-In Sheets, and the Playbook — formatted to fit the page for a physical copy at the mat.</li>
+          <li><b>CSV import/export</b> on Squad and Playbook round-trips through spreadsheet software for bulk edits or club-registration imports.</li>
+          <li><b>Contrast guardrail</b> in Customize warns if your chosen Text and Background colors are too close to read comfortably (below the WCAG 4.5:1 ratio).</li>
+        </ul>
+      </GuideSection>
+
+      <GuideSection title="Quick Reference">
+        <table>
+          <thead><tr><th>I want to…</th><th>Go to</th></tr></thead>
+          <tbody>
+            <tr><td>Set up a new season's teams and their weight classes</td><td>Customize → Teams, Weight Class Sets</td></tr>
+            <tr><td>Add or update a wrestler</td><td>Squad</td></tr>
+            <tr><td>Build next week's practice</td><td>Practice Plans → Duplicate, or Command Center → day's <b>+</b></td></tr>
+            <tr><td>Add a technique/drill to the curriculum</td><td>Playbook → + New Concept/Skill</td></tr>
+            <tr><td>Schedule a meet or tournament</td><td>Command Center → day's <b>+</b> → Competition (weigh-in sheet drafts itself)</td></tr>
+            <tr><td>Schedule a parents meeting, fundraiser, or team gathering</td><td>Command Center → day's <b>+</b> → Event</td></tr>
+            <tr><td>Set up a tri-meet</td><td>The Competition's page → + Add Dual, once per opponent</td></tr>
+            <tr><td>Print a weigh-in sheet for the mat</td><td>Weigh-In → open the sheet → Print / Save as PDF</td></tr>
+            <tr><td>Record who won at what weight</td><td>The Competition → its dual's bout table (Dual) or Tournament Results table</td></tr>
+            <tr><td>See the season's overall dual record, placements, and individual stats</td><td>Competitions</td></tr>
+            <tr><td>Look up a champion from three years ago</td><td>Hall of Fame, or Global Search</td></tr>
+            <tr><td>See what's coming up this week and next two</td><td>Command Center → Look Ahead</td></tr>
+            <tr><td>Roll into a new season</td><td>Nothing to do — numbering resets automatically every Sept 1; Customize → Teams → "Renumber Practices by Team" to fix historical numbering</td></tr>
+          </tbody>
+        </table>
+        <p className="muted">
+          <b>Recommended seasonal workflow:</b> set up Teams and Weight Class Sets once in Customize → build out Squad
+          as tryouts finalize → keep Playbook growing as you plan (most coaches add items the first time they're
+          needed, not all up front) → use Team Baseline once your practice schedule stabilizes so new practices need
+          almost no re-typing → let Competitions auto-draft their weigh-in sheets and fill in results as each event
+          happens, rather than batching it — the sooner a dual's bout table is filled in, the more useful it is as
+          next practice's game plan too.
+        </p>
+      </GuideSection>
+    </div>
+  );
+}
+
 /* ============================== SETTINGS ============================== */
 
 function SettingsPage() {
@@ -7408,6 +7615,8 @@ function Screen() {
       return <HistoryPage />;
     case "settings":
       return <SettingsPage />;
+    case "guide":
+      return <UserGuidePage />;
     case "dashboard":
     default:
       if (view.sub === "competition") return <CompetitionDetail key={view.id} competitionId={view.id} />;
