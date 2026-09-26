@@ -53,6 +53,7 @@ const CSS = `
 }
 .mp * { box-sizing: border-box; }
 .mp p, .mp h1, .mp h2, .mp h3, .mp ul { margin: 0; }
+.print-footer { display: none; }
 
 /* Capped well above the old 1100px (which clipped content) but short of
    the full window on a wide monitor — edge-to-edge left everything from
@@ -66,6 +67,13 @@ const CSS = `
   border-radius: 2px;
   clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 11px, 100% 100%, 11px 100%, 0 calc(100% - 11px));
 }
+
+/* Trophy-case treatment for the Hall of Fame — these cards hold actual
+   championship records, so a gold accent sets them apart from every
+   other plain card in the app. */
+.hof-card { border-top: 3px solid #c9a227; }
+.hof-card .hdr { background: linear-gradient(180deg, rgba(201,162,39,.14), transparent); }
+.hof-icon { color: #c9a227; flex-shrink: 0; }
 
 .row { display: flex; align-items: center; }
 .wrapf { flex-wrap: wrap; }
@@ -323,6 +331,10 @@ const CSS = `
   .mp .cal-card .pad { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .mp .cal-card .pad > .cal-grid:last-child { flex: 1; min-height: 0; grid-auto-rows: 1fr; }
   .mp .cal-card .cal-cell { aspect-ratio: auto; height: 100%; min-height: 0; }
+  .print-footer {
+    display: block; text-align: center; font-size: 10px; color: #888;
+    margin-top: 10px; padding-top: 6px; border-top: 1px solid #ddd;
+  }
 }
 `;
 
@@ -1049,10 +1061,58 @@ const TONE = {
 };
 const toneOf = (tone) => TONE[tone in TONE ? tone : "slate"];
 
-function Pill({ label, tone }) {
+/* Small inline glyphs for status pills — stroke-based so they inherit the
+   pill's own tone color (currentColor) instead of carrying their own. */
+function PillIcon({ children }) {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+      strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      {children}
+    </svg>
+  );
+}
+function LockIcon() {
+  return <PillIcon><rect x="5" y="11" width="14" height="10" rx="1.5" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></PillIcon>;
+}
+function PencilIcon() {
+  return <PillIcon><path d="M4 20l1-4L16 5l3 3L8 19l-4 1Z" /></PillIcon>;
+}
+function ClockIcon() {
+  return <PillIcon><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></PillIcon>;
+}
+function CheckIcon() {
+  return <PillIcon><path d="M4 12l5 5L20 6" /></PillIcon>;
+}
+function TrophyIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" className="hof-icon">
+      <path d="M8 4h8v5a4 4 0 0 1-8 0V4Z" />
+      <path d="M8 5H5a2 2 0 0 0 2 3.5M16 5h3a2 2 0 0 1-2 3.5" />
+      <path d="M10 14h4v3h-4z" />
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
+    </svg>
+  );
+}
+
+/* Screen-hidden, print-only footer — carries the program's own name and
+   tagline onto printed practice plans, weigh-in sheets, and calendars,
+   so a page handed to a captain or parent still reads as this team's. */
+function PrintFooter() {
+  const { state } = useApp();
+  return (
+    <p className="print-footer">
+      {state.program.name} — Plan. Teach. Develop. Win.
+    </p>
+  );
+}
+
+function Pill({ label, tone, icon }) {
   const t = toneOf(tone);
   return (
-    <span className="pill" style={{ background: t.bg, color: t.color, borderColor: t.border }}>
+    <span className="pill" style={{ background: t.bg, color: t.color, borderColor: t.border, display: "inline-flex", alignItems: "center", gap: 4 }}>
+      {icon}
       {label}
     </span>
   );
@@ -2658,6 +2718,7 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
             );
           })}
         </div>
+        <PrintFooter />
       </div>
     </div>
   );
@@ -2704,7 +2765,7 @@ function EventPreview({ kind, id, onClose, go }) {
         <div className="row gap2 wrapf">
           <span className="pill" style={eventPillStyle(teamColor(team), kind)}>{teamName(row.teamId) || "—"}</span>
           <span className="sb">{title}</span>
-          {practice && (practice.reconciledAt ? <Pill label="Locked In" tone="emerald" /> : <Pill label="Building the Plan" tone="slate" />)}
+          {practice && (practice.reconciledAt ? <Pill label="Locked In" tone="emerald" icon={<LockIcon />} /> : <Pill label="Building the Plan" tone="slate" icon={<PencilIcon />} />)}
           {competition && <Pill label={competition.type === "DUAL" ? "Dual Meet" : "Tournament"} tone="slate" />}
         </div>
         <button className="btn btn-ghost btn-sm iconbtn" onClick={onClose}>Close</button>
@@ -2988,7 +3049,7 @@ function PracticeListPage() {
               </div>
             </div>
           ))}
-          {upcoming.length === 0 && <div className="pad muted xs">No plans yet — create one above.</div>}
+          {upcoming.length === 0 && <div className="pad muted xs">The mat's open — build your first plan above.</div>}
         </div>
       </div>
 
@@ -3002,14 +3063,14 @@ function PracticeListPage() {
             <div key={p.id} className="row">
               <div className="pad row between click" style={{ flex: 1 }} onClick={() => go("practice", "detail", p.id)}>
                 <span className="sb">{fmtFull(p.date)}<span className="muted xs"> · {label(p)}</span></span>
-                <Pill label="Locked In" tone="emerald" />
+                <Pill label="Locked In" tone="emerald" icon={<LockIcon />} />
               </div>
               <div className="pad" style={{ paddingLeft: 0 }}>
                 <DeletePracticeButton practiceId={p.id} label="Delete" />
               </div>
             </div>
           ))}
-          {reconciled.length === 0 && <div className="pad muted xs">Nothing reconciled yet.</div>}
+          {reconciled.length === 0 && <div className="pad muted xs">Nothing completed yet.</div>}
         </div>
       </div>
     </div>
@@ -3360,7 +3421,7 @@ function PracticeDayPage({ practiceId }) {
             <div className="row gap2 wrapf">
               <button className="link xs" onClick={() => go("dashboard")}>← Command Center</button>
               <span className="b" style={{ fontSize: 17 }}>Practice{practice.practiceNumber ? ` #${practice.practiceNumber}` : ""}</span>
-              {practice.reconciledAt ? <Pill label="Locked In" tone="emerald" /> : <Pill label="Building the Plan" tone="slate" />}
+              {practice.reconciledAt ? <Pill label="Locked In" tone="emerald" icon={<LockIcon />} /> : <Pill label="Building the Plan" tone="slate" icon={<PencilIcon />} />}
             </div>
             <p className="muted xs" style={{ marginTop: 4 }}>
               {[
@@ -3561,7 +3622,7 @@ function PracticeEditor({ practiceId }) {
           <div className="row gap2 wrapf">
             <button className="link xs" onClick={() => go("practice")}>← Plans</button>
             <span className="b" style={{ fontSize: 17 }}>{fmtLong(practice.date)}</span>
-            {practice.reconciledAt ? <Pill label="Locked In" tone="emerald" /> : <Pill label="Building the Plan" tone="slate" />}
+            {practice.reconciledAt ? <Pill label="Locked In" tone="emerald" icon={<LockIcon />} /> : <Pill label="Building the Plan" tone="slate" icon={<PencilIcon />} />}
           </div>
           <div className="row gap2 wrapf">
             <button className="btn btn-ghost btn-sm" onClick={exportCsv}>Export CSV</button>
@@ -3687,6 +3748,7 @@ function PracticeEditor({ practiceId }) {
       </div>
 
       <GroupRotation />
+      <PrintFooter />
     </div>
   );
 }
@@ -4606,7 +4668,7 @@ function RosterPage() {
           <option value="">Level (optional)</option>
           {WRESTLER_LEVELS.map((l) => <option key={l} value={l}>{l} - {LEVEL_LABEL[l]}</option>)}
         </select>
-        <button className="btn btn-g btn-sm" onClick={addWrestler}>+ Add Wrestler</button>
+        <button className="btn btn-g btn-sm" onClick={addWrestler}>+ Bring Up a Wrestler</button>
       </div>
     </div>
   );
@@ -4745,10 +4807,10 @@ function WeighInListPage() {
                 <span className="sb">{fmtFull(s.date)}</span>
                 {sheetSubtitle(s) && <span className="muted xs" style={{ marginLeft: 8 }}>{sheetSubtitle(s)}</span>}
               </div>
-              <Pill label="Past Weigh-Ins" tone="emerald" />
+              <Pill label="Past Weigh-Ins" tone="emerald" icon={<CheckIcon />} />
             </div>
           ))}
-          {archived.length === 0 && <div className="pad muted xs">Nothing archived yet.</div>}
+          {archived.length === 0 && <div className="pad muted xs">No past weigh-ins yet.</div>}
         </div>
       </div>
     </div>
@@ -4820,7 +4882,7 @@ function WeighInSheetForm({ sheetId }) {
               <div className="row gap2 wrapf">
                 <button className="link xs" onClick={() => go("weighin")}>← Weigh-Ins</button>
                 <span className="b" style={{ fontSize: 17 }}>{fmtLong(sheet.date)}</span>
-                <Pill label={editable ? "Upcoming Weigh-Ins" : "Past Weigh-Ins"} tone={editable ? "slate" : "emerald"} />
+                <Pill label={editable ? "Upcoming Weigh-Ins" : "Past Weigh-Ins"} tone={editable ? "slate" : "emerald"} icon={editable ? <ClockIcon /> : <CheckIcon />} />
               </div>
               <p className="muted xs" style={{ marginTop: 4 }}>{sheetSubtitle(sheet) || "No event details yet"}</p>
             </div>
@@ -4899,6 +4961,7 @@ function WeighInSheetForm({ sheetId }) {
           <p key={i} className="muted xs" style={{ margin: i === 0 ? 0 : "4px 0 0" }}>{line}</p>
         ))}
       </div>
+      <PrintFooter />
     </div>
   );
 }
@@ -5007,8 +5070,10 @@ function HistoryPage() {
   const { state } = useApp();
   return (
     <div className="grid" style={{ gap: 20 }}>
-      <div className="card">
-        <div className="hdr"><h1 className="b" style={{ fontSize: 17 }}>Hall of Fame</h1></div>
+      <div className="card hof-card">
+        <div className="hdr">
+          <span className="row gap2"><TrophyIcon size={20} /><h1 className="b" style={{ fontSize: 17 }}>Hall of Fame</h1></span>
+        </div>
       </div>
       {HISTORY_CATEGORIES.map((category) => {
         const records = state.history
@@ -5024,8 +5089,10 @@ function HistoryPage() {
 
 function HistoryCategoryList({ category, title, records }) {
   return (
-    <div className="card">
-      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>{title}</h2></div>
+    <div className="card hof-card">
+      <div className="hdr">
+        <span className="row gap2"><TrophyIcon size={14} /><h2 className="sb" style={{ fontSize: 15 }}>{title}</h2></span>
+      </div>
       <div className="divide">
         {records.map((r) => <HistoryRow key={r.id} record={r} />)}
         {records.length === 0 && <div className="pad muted xs">No champions recorded yet.</div>}
@@ -5509,7 +5576,7 @@ function TeamBaseline({ team }) {
       <p className="muted xs" style={{ marginTop: 8 }}>
         New practices for this team start from these. {open2
           ? `${open2} existing practice${open2 === 1 ? "" : "s"} can be updated:`
-          : "No unreconciled practices to update yet."}
+          : "No practices on deck to update yet."}
       </p>
       {open2 > 0 && (
         <div className="row gap2 wrapf" style={{ marginTop: 8 }}>
@@ -5610,7 +5677,7 @@ function MatPlan() {
     return (
       <div className="mp">
         <style>{CSS}</style>
-        <div className="wrap"><div className="card pad muted">Loading MatPlan…</div></div>
+        <div className="wrap"><div className="card pad muted">Taking the mat…</div></div>
       </div>
     );
   }
