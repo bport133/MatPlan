@@ -6429,7 +6429,7 @@ function WeightClassSetsCard() {
 
   function add() {
     if (!newName.trim()) return;
-    api.createWeightClassSet(newName, [...DEFAULT_WEIGHT_CLASSES]);
+    api.createWeightClassSet(newName, []);
     setNewName("");
   }
 
@@ -6467,7 +6467,7 @@ function WeightClassSetRow({ set }) {
 
   function saveClasses() {
     const parsed = text.split(",").map((s) => s.trim()).filter(Boolean);
-    api.updateWeightClassSet(set.id, { classes: parsed.length ? parsed : DEFAULT_WEIGHT_CLASSES });
+    api.updateWeightClassSet(set.id, { classes: parsed });
   }
 
   return (
