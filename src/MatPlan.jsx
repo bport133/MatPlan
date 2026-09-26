@@ -391,22 +391,44 @@ const OUTCOME_TONE = {
   PLANNED: "slate", DONE: "emerald", MODIFIED: "amber", SKIPPED: "red", ADDED: "blue",
 };
 
-const HWT = 999;
-const WEIGHT_CLASS_ORDER = [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 110, 125, HWT];
-const WEIGHT_CLASS_LABEL = Object.fromEntries(
-  WEIGHT_CLASS_ORDER.map((wc) => [wc, wc === HWT ? "Hwt" : String(wc)])
-);
-// Visual split only, matching the paper card's two print columns — one roster, not two.
-const WEIGHT_CLASS_COLUMNS = [
-  [50, 55, 60, 65, 70, 75, 80],
-  [85, 90, 95, 100, 110, 125, HWT],
-];
-// Fixed lookup, not a numeric sort — 100→110→125 breaks uniform steps and Hwt (999) must sort last.
-function weightClassIndex(wc) {
-  if (wc === null || wc === undefined) return WEIGHT_CLASS_ORDER.length;
-  const i = WEIGHT_CLASS_ORDER.indexOf(wc);
-  return i === -1 ? WEIGHT_CLASS_ORDER.length : i;
+// Every team gets its own ordered weight-class list (see team.weightClasses,
+// backfilled with this on migration) since different squads — a youth Cup
+// team vs. a scholastic Elite team — weigh in against different brackets.
+const DEFAULT_WEIGHT_CLASSES = ["50", "55", "60", "65", "70", "75", "80", "85", "90", "95", "100", "110", "125", "Hwt"];
+
+function teamWeightClasses(team) {
+  return Array.isArray(team && team.weightClasses) && team.weightClasses.length ? team.weightClasses : DEFAULT_WEIGHT_CLASSES;
 }
+
+/** The classes a weigh-in sheet (or a multi-team wrestler) should offer —
+ *  the union of its team(s)' lists, in team order, deduplicated. Empty
+ *  `teamIds` means "every team", same convention as onRosterOfAny. */
+function weightClassesForTeams(teams, teamIds) {
+  const ids = teamIds && teamIds.length ? teamIds : teams.map((t) => t.id);
+  const seen = new Set();
+  const out = [];
+  for (const id of ids) {
+    const t = teams.find((x) => x.id === id);
+    if (!t) continue;
+    for (const wc of teamWeightClasses(t)) {
+      if (!seen.has(wc)) {
+        seen.add(wc);
+        out.push(wc);
+      }
+    }
+  }
+  return out;
+}
+
+/** Fixed lookup against a specific list, not a numeric sort — classes like
+ *  "Hwt" aren't numbers, and even numeric ones (100→110→125) aren't evenly
+ *  spaced. Unmatched or unset always sorts last. */
+function weightClassIndexIn(list, wc) {
+  if (wc === null || wc === undefined) return list.length;
+  const i = list.indexOf(wc);
+  return i === -1 ? list.length : i;
+}
+
 const WEIGH_IN_FOOTER_LINES = [
   "All Wrestlers will make weight in a singlet or be moved up. Wrestlers not making weight should still be given a match.",
   "All bouts and matches will adhere to the policies outlined in the GRYWL handbook, available at GRYWL.com",
@@ -1571,6 +1593,31 @@ function migrateTeamColors(saved) {
   };
 }
 
+/** Gives every team its own editable weight-class list, for saves made
+ * before weight classes were per-team (they all shared one hardcoded set). */
+function migrateTeamWeightClasses(saved) {
+  if (!saved.teams || saved.teams.every((t) => Array.isArray(t.weightClasses))) return saved;
+  return {
+    ...saved,
+    teams: saved.teams.map((t) => (Array.isArray(t.weightClasses) ? t : { ...t, weightClasses: [...DEFAULT_WEIGHT_CLASSES] })),
+  };
+}
+
+/** Splits the old single wrestler.weightClass (actually their recorded body
+ * weight, mislabeled) into `weight` (that same number, preserved) and a
+ * fresh `weightClass` (a real bracket, picked per-team from now on — the
+ * old number rarely lines up with a valid bracket, so it isn't guessed). */
+function migrateWrestlerWeight(saved) {
+  if (!saved.wrestlers || saved.wrestlers.every((w) => w.weightMigrated)) return saved;
+  return {
+    ...saved,
+    wrestlers: saved.wrestlers.map((w) => {
+      if (w.weightMigrated) return w;
+      return { ...w, weight: w.weight != null ? w.weight : w.weightClass ?? null, weightClass: null, weightMigrated: true };
+    }),
+  };
+}
+
 /** Backfills `teamIds` for saves made while wrestlers had a single team. */
 function migrateRosterTeams(saved) {
   if (!saved.wrestlers || saved.wrestlers.every((w) => Array.isArray(w.teamIds))) return saved;
@@ -1701,7 +1748,15 @@ const AppCtx = React.createContext(null);
 const useApp = () => React.useContext(AppCtx);
 
 function runMigrations(saved) {
-  return migrateEmptyCues(migrateLinks(migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))))));
+  return migrateEmptyCues(
+    migrateLinks(
+      migrateWrestlerWeight(
+        migrateTeamWeightClasses(
+          migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))))
+        )
+      )
+    )
+  );
 }
 
 const APP_STATE_TABLE = "app_state";
@@ -1843,6 +1898,36 @@ function makeApi(update) {
     update((s) => ({ ...s, practices: s.practices.map((p) => (p.id === pid ? fn(p) : p)) }));
   const patchSheet = (sid, fn) =>
     update((s) => ({ ...s, weighInSheets: s.weighInSheets.map((x) => (x.id === sid ? fn(x) : x)) }));
+  /** Shared by createWeighInSheet and createCompetition (which drafts one
+   * automatically), so a competition's auto-drafted sheet and a manually
+   * created one are built identically. */
+  const buildWeighInSheet = (s, input) => {
+    const clean = (v) => (v && String(v).trim() ? String(v).trim() : null);
+    // No team(s) specified means "every team" (see onRosterOfAny) rather
+    // than silently guessing the first team in the list — a sheet made
+    // from a Practice/Competition still passes its own single teamId.
+    const teamIds = Array.isArray(input.teamIds) ? input.teamIds : input.teamId ? [input.teamId] : [];
+    return {
+      id: uid(), date: input.date,
+      event: clean(input.event),
+      homeTeam: clean(input.homeTeam),
+      visitorTeam: clean(input.visitorTeam),
+      teamIds,
+      competitionId: input.competitionId || null,
+      practiceId: input.practiceId || null,
+      archivedAt: null, createdAt: new Date().toISOString(),
+      // Seeded from the selected team(s)' active roster so a sheet opens
+      // ready to weigh instead of empty. Anyone out for this event is
+      // scratched on the sheet, which never touches the roster itself.
+      entries: input.populate === false ? [] : s.wrestlers
+        .filter((w) => w.active && onRosterOfAny(w, teamIds))
+        .sort((a, b) => a.order - b.order)
+        .map((w, i) => ({
+          id: uid(), weightClass: w.weightClass ?? null, wrestlerId: w.id,
+          name: w.name, weight: null, level: null, available: true, order: i,
+        })),
+    };
+  };
 
   return {
     /* ---- syllabus ---- */
@@ -2234,7 +2319,7 @@ function makeApi(update) {
     reopenPractice: (id) => patchIn("practices", id, { reconciledAt: null }),
 
     /* ---- roster ---- */
-    createWrestler(name, weightClass, teamIds, level) {
+    createWrestler(name, weight, teamIds, level, weightClass) {
       update((s) => {
         const list = (teamIds || []).filter(Boolean);
         return {
@@ -2242,11 +2327,12 @@ function makeApi(update) {
           wrestlers: [
             ...s.wrestlers,
             {
-              id: uid(), name, weightClass, active: true, level: level || null,
+              id: uid(), name, weight, weightClass: weightClass || null, active: true, level: level || null,
               teamIds: list.length ? list : [(s.teams[0] && s.teams[0].id)].filter(Boolean),
               order: nextOrder(s.wrestlers),
               ...emptyWrestlerDetails(),
               detailsAdded: true,
+              weightMigrated: true,
             },
           ],
         };
@@ -2296,20 +2382,25 @@ function makeApi(update) {
           const n = Number((raw || "").trim());
           return (raw || "").trim() && !Number.isNaN(n) ? n : null;
         };
+        const toStr = (raw) => (raw || "").trim() || null;
 
         for (const r of rows) {
           const wide = r.length > 6;
-          let name, teamIds, weightClass, active, details;
+          // weight and weightClass are only ever set by the format that
+          // actually carries that column — the other stays untouched on an
+          // existing wrestler, and null on a new one — since a club export's
+          // "Weight" column is body weight, never a bracket.
+          let name, teamIds, weight, weightClass, active, details;
 
           if (wide) {
             const [
-              team, first, last, dob, gender, age, grade, weight, parent, cell, email,
+              team, first, last, dob, gender, age, grade, wt, parent, cell, email,
               ecName, ecCell, net, discAmt, discName, refunds, allergies, list_, insurance,
               policy, address, city, zip, state,
             ] = r.map((c) => (c || "").trim());
             name = `${first} ${last}`.trim();
             teamIds = teamIdsFor(team);
-            weightClass = toNum(weight);
+            weight = toNum(wt);
             active = null; // the club sheet doesn't track this — leave existing wrestlers' flag alone
             details = {
               firstName: first, lastName: last, dob, gender, age, grade,
@@ -2322,7 +2413,7 @@ function makeApi(update) {
           } else {
             name = (r[0] || "").trim();
             teamIds = teamIdsFor(r[1]);
-            weightClass = toNum(r[2]);
+            weightClass = toStr(r[2]);
             const activeRaw = (r[3] || "").trim().toLowerCase();
             active = activeRaw ? activeRaw === "yes" || activeRaw === "true" : true;
             details = null;
@@ -2334,7 +2425,8 @@ function makeApi(update) {
           if (idx >= 0) {
             list[idx] = {
               ...list[idx],
-              weightClass,
+              weight: wide ? weight : list[idx].weight,
+              weightClass: wide ? list[idx].weightClass : weightClass,
               active: active === null ? list[idx].active : active,
               teamIds: teamIds.length ? teamIds : teamsOf(list[idx]),
               ...(details || {}),
@@ -2342,9 +2434,11 @@ function makeApi(update) {
             updated++;
           } else {
             list.push({
-              id: uid(), name, weightClass, active: active === null ? true : active,
+              id: uid(), name, weight: weight ?? null, weightClass: weightClass ?? null,
+              active: active === null ? true : active,
               teamIds: teamIds.length ? teamIds : fallback,
               order: nextOrder(list),
+              weightMigrated: true,
               ...emptyWrestlerDetails(),
               ...(details || {}),
               detailsAdded: true,
@@ -2360,28 +2454,38 @@ function makeApi(update) {
     /* ---- competitions ---- */
     createCompetition(input) {
       const id = uid();
-      update((s) => ({
-        ...s,
-        competitions: [
-          ...s.competitions,
-          {
-            id,
-            date: input.dateStr,
-            teamId: input.teamId || (s.teams[0] && s.teams[0].id) || null,
-            team: (input.team || "").trim(),
-            name: input.name,
-            type: input.type,
-            startTime: (input.startTime || "").trim(),
-            location: (input.location || "").trim() || null,
-            address: (input.address || "").trim() || null,
-            notes: null,
-            teamScore: null,
-            oppScore: null,
-            resultNote: null,
-            weighIns: [],
-          },
-        ],
-      }));
+      update((s) => {
+        const teamId = input.teamId || (s.teams[0] && s.teams[0].id) || null;
+        const competition = {
+          id,
+          date: input.dateStr,
+          teamId,
+          team: (input.team || "").trim(),
+          name: input.name,
+          type: input.type,
+          startTime: (input.startTime || "").trim(),
+          location: (input.location || "").trim() || null,
+          address: (input.address || "").trim() || null,
+          notes: null,
+          teamScore: null,
+          oppScore: null,
+          resultNote: null,
+          weighIns: [],
+        };
+        const teamLabel = (s.teams.find((t) => t.id === teamId) || {}).name || s.program.name;
+        // Auto-drafted so a coach never has to remember a separate step —
+        // it's the same sheet the "Open Weigh-In Sheet" button on the
+        // competition page would otherwise create on first visit there.
+        const sheet = buildWeighInSheet(s, {
+          date: input.dateStr,
+          event: input.name,
+          homeTeam: teamLabel,
+          visitorTeam: input.type === "DUAL" ? input.name : "",
+          teamId,
+          competitionId: id,
+        });
+        return { ...s, competitions: [...s.competitions, competition], weighInSheets: [...s.weighInSheets, sheet] };
+      });
       return id;
     },
     updateCompetition: (id, data) => patchIn("competitions", id, data),
@@ -2415,40 +2519,11 @@ function makeApi(update) {
 
     /* ---- weigh-in sheets ---- */
     createWeighInSheet(input) {
-      const id = uid();
-      const clean = (v) => (v && String(v).trim() ? String(v).trim() : null);
+      let id;
       update((s) => {
-        // No team(s) specified means "every team" (see onRosterOfAny) rather
-        // than silently guessing the first team in the list — a sheet made
-        // from a Practice/Competition still passes its own single teamId.
-        const teamIds = Array.isArray(input.teamIds) ? input.teamIds : input.teamId ? [input.teamId] : [];
-        return {
-          ...s,
-          weighInSheets: [
-            ...s.weighInSheets,
-            {
-              id, date: input.date,
-              event: clean(input.event),
-              homeTeam: clean(input.homeTeam),
-              visitorTeam: clean(input.visitorTeam),
-              teamIds,
-              competitionId: input.competitionId || null,
-              practiceId: input.practiceId || null,
-              archivedAt: null, createdAt: new Date().toISOString(),
-              // Seeded from the selected team(s)' active roster so a sheet
-              // opens ready to weigh instead of empty. Anyone out for this
-              // event is scratched on the sheet, which never touches the
-              // roster itself.
-              entries: input.populate === false ? [] : s.wrestlers
-                .filter((w) => w.active && onRosterOfAny(w, teamIds))
-                .sort((a, b) => a.order - b.order)
-                .map((w, i) => ({
-                  id: uid(), weightClass: w.weightClass ?? null, wrestlerId: w.id,
-                  name: w.name, weight: null, level: null, available: true, order: i,
-                })),
-            },
-          ],
-        };
+        const sheet = buildWeighInSheet(s, input);
+        id = sheet.id;
+        return { ...s, weighInSheets: [...s.weighInSheets, sheet] };
       });
       return id;
     },
@@ -4387,16 +4462,16 @@ function CompetitionResult({ competition }) {
 
 function CompetitionWeighInRow({ competitionId, wrestler, weighIn }) {
   const { api } = useApp();
-  const [weight, setWeight] = useState(weighIn.weight != null ? String(weighIn.weight) : "");
-  const [weightClass, setWeightClass] = useState(
-    weighIn.weightClass != null ? String(weighIn.weightClass) : wrestler.weightClass != null ? String(wrestler.weightClass) : ""
+  const [weight, setWeight] = useState(
+    weighIn.weight != null ? String(weighIn.weight) : wrestler.weight != null ? String(wrestler.weight) : ""
   );
+  const [weightClass, setWeightClass] = useState(weighIn.weightClass || wrestler.weightClass || "");
   const [notes, setNotes] = useState(weighIn.notes || "");
 
   function save() {
     api.setCompetitionWeighIn(competitionId, wrestler.id, {
       weight: weight ? Number(weight) : null,
-      weightClass: weightClass ? Number(weightClass) : null,
+      weightClass: weightClass.trim() || null,
       notes: notes || null,
     });
   }
@@ -4953,10 +5028,13 @@ function RosterPage() {
   const { state, api } = useApp();
   const teamName = useTeamName();
   const [name, setName] = useState("");
+  const [weight, setWeight] = useState("");
   const [weightClass, setWeightClass] = useState("");
   const [level, setLevel] = useState("");
   const [teamFilter, setTeamFilter] = useState(null);
   const [newTeamId, setNewTeamId] = useState((state.teams[0] || {}).id || null);
+  const addTeamId = teamFilter || newTeamId;
+  const addTeamClasses = teamWeightClasses(state.teams.find((t) => t.id === addTeamId));
 
   const shown = [...state.wrestlers]
     .filter((w) => onRosterOf(w, teamFilter))
@@ -4977,7 +5055,7 @@ function RosterPage() {
       const names = teamsOf(w).map((id) => teamName(id)).filter(Boolean).join("; ");
       rows.push([
         names, w.firstName || "", w.lastName || "", w.dob || "", w.gender || "", w.age || "", w.grade || "",
-        w.weightClass == null ? "" : w.weightClass,
+        w.weight == null ? "" : w.weight,
         w.parentName || "", w.parentCell || "", w.email || "",
         w.emergencyContactName || "", w.emergencyContactPhone || "",
         w.net || "", w.discountAmount || "", w.discountName || "", w.refunds || "",
@@ -4990,8 +5068,9 @@ function RosterPage() {
 
   function addWrestler() {
     if (!name.trim() || !level) return;
-    api.createWrestler(name.trim(), weightClass ? Number(weightClass) : null, [teamFilter || newTeamId], Number(level));
+    api.createWrestler(name.trim(), weight ? Number(weight) : null, [addTeamId], Number(level), weightClass || null);
     setName("");
+    setWeight("");
     setWeightClass("");
     setLevel("");
   }
@@ -5025,7 +5104,11 @@ function RosterPage() {
       <div className="card pad row gap2 wrapf">
         <TeamSelect value={teamFilter || newTeamId} onChange={setNewTeamId} style={{ maxWidth: 180 }} />
         <input className="inp" style={{ maxWidth: 200 }} placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWrestler()} />
-        <input className="inp numsm" placeholder="Weight (lbs)" value={weightClass} onChange={(e) => setWeightClass(e.target.value)} />
+        <input className="inp numsm" placeholder="Weight (lbs)" value={weight} onChange={(e) => setWeight(e.target.value)} />
+        <select className="inp" style={{ maxWidth: 130 }} value={weightClass} onChange={(e) => setWeightClass(e.target.value)}>
+          <option value="">Weight Class</option>
+          {addTeamClasses.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
+        </select>
         <select className="inp" style={{ maxWidth: 150 }} value={level} onChange={(e) => setLevel(e.target.value)}>
           <option value="">Level</option>
           {WRESTLER_LEVELS.map((l) => <option key={l} value={l}>{l} - {LEVEL_LABEL[l]}</option>)}
@@ -5040,9 +5123,11 @@ function WrestlerRow({ wrestler, showTeam }) {
   const { state, api, showUndoToast } = useApp();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(wrestler.name);
-  const [weightClass, setWeightClass] = useState(wrestler.weightClass != null ? String(wrestler.weightClass) : "");
+  const [weight, setWeight] = useState(wrestler.weight != null ? String(wrestler.weight) : "");
+  const [weightClass, setWeightClass] = useState(wrestler.weightClass || "");
   const [level, setLevel] = useState(wrestler.level != null ? String(wrestler.level) : "");
   const [active, setActive] = useState(wrestler.active);
+  const classOptions = weightClassesForTeams(state.teams, teamsOf(wrestler));
 
   return (
     <div>
@@ -5058,7 +5143,8 @@ function WrestlerRow({ wrestler, showTeam }) {
           })}
         </div>
         <div className="row gap2 wrapf">
-          {wrestler.weightClass != null && <Pill label={`${wrestler.weightClass} lbs`} tone="slate" />}
+          {wrestler.weight != null && <Pill label={`${wrestler.weight} lbs`} tone="slate" />}
+          {wrestler.weightClass && <Pill label={`Class ${wrestler.weightClass}`} tone="slate" />}
           {!wrestler.active && <Pill label="Inactive" tone="red" />}
         </div>
         <div>
@@ -5078,10 +5164,17 @@ function WrestlerRow({ wrestler, showTeam }) {
           />
           <TeamCheckboxes wrestler={wrestler} />
           <input
-            className="inp numsm" placeholder="Weight (lbs)" value={weightClass}
-            onChange={(e) => setWeightClass(e.target.value)}
-            onBlur={() => api.updateWrestler(wrestler.id, { weightClass: weightClass ? Number(weightClass) : null })}
+            className="inp numsm" placeholder="Weight (lbs)" value={weight}
+            onChange={(e) => setWeight(e.target.value)}
+            onBlur={() => api.updateWrestler(wrestler.id, { weight: weight ? Number(weight) : null })}
           />
+          <select
+            className="inp" style={{ maxWidth: 130 }} value={weightClass}
+            onChange={(e) => { setWeightClass(e.target.value); api.updateWrestler(wrestler.id, { weightClass: e.target.value || null }); }}
+          >
+            <option value="">Weight Class</option>
+            {classOptions.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
+          </select>
           <select
             className="inp" style={{ maxWidth: 150 }} value={level}
             onChange={(e) => { setLevel(e.target.value); api.updateWrestler(wrestler.id, { level: e.target.value ? Number(e.target.value) : null }); }}
@@ -5214,9 +5307,12 @@ function WeighInSheetForm({ sheetId }) {
   const teamIds = sheetTeamIds(sheet);
   const rosterTeamsLabel = teamIds.length ? teamIds.map((id) => teamName(id)).filter(Boolean).join(", ") : "All Teams";
   const rosterNames = state.wrestlers.filter((w) => w.active).sort((a, b) => a.order - b.order);
+  const classes = weightClassesForTeams(state.teams, teamIds);
+  const midpoint = Math.ceil(classes.length / 2);
+  const columns = [classes.slice(0, midpoint), classes.slice(midpoint)];
 
   const byClass = new Map();
-  for (const wc of WEIGHT_CLASS_ORDER) byClass.set(wc, []);
+  for (const wc of classes) byClass.set(wc, []);
   byClass.set("extra", []);
   for (const e of sheet.entries) {
     const key = e.weightClass === null || e.weightClass === undefined ? "extra" : e.weightClass;
@@ -5227,7 +5323,7 @@ function WeighInSheetForm({ sheetId }) {
 
   function exportCsv() {
     const sorted = [...sheet.entries].sort(
-      (a, b) => weightClassIndex(a.weightClass) - weightClassIndex(b.weightClass) || a.order - b.order
+      (a, b) => weightClassIndexIn(classes, a.weightClass) - weightClassIndexIn(classes, b.weightClass) || a.order - b.order
     );
     const rows = [
       ["Date", parseDateOnly(sheet.date).toLocaleDateString()],
@@ -5239,7 +5335,7 @@ function WeighInSheetForm({ sheetId }) {
     ];
     for (const e of sorted) {
       rows.push([
-        e.weightClass == null ? "Extra" : WEIGHT_CLASS_LABEL[e.weightClass] || e.weightClass,
+        e.weightClass == null ? "Extra" : e.weightClass,
         e.name, e.weight == null ? "" : e.weight, e.level || "",
       ]);
     }
@@ -5337,15 +5433,16 @@ function WeighInSheetForm({ sheetId }) {
       <div className="grid g2">
         {[0, 1].map((col) => (
           <div key={col} className="grid" style={{ gap: 16 }}>
-            {WEIGHT_CLASS_COLUMNS[col].map((wc) => (
+            {columns[col].map((wc) => (
               <WeightClassSection
                 key={wc}
                 sheetId={sheet.id}
                 weightClass={wc}
-                title={WEIGHT_CLASS_LABEL[wc]}
+                title={wc}
                 entries={byClass.get(wc) || []}
                 editable={editable}
                 rosterNames={rosterNames}
+                classes={classes}
               />
             ))}
           </div>
@@ -5359,6 +5456,7 @@ function WeighInSheetForm({ sheetId }) {
         entries={byClass.get("extra") || []}
         editable={editable}
         rosterNames={rosterNames}
+        classes={classes}
       />
 
       <div className="card pad">
@@ -5371,12 +5469,12 @@ function WeighInSheetForm({ sheetId }) {
   );
 }
 
-function WeightClassSection({ sheetId, weightClass, title, entries, editable, rosterNames }) {
+function WeightClassSection({ sheetId, weightClass, title, entries, editable, rosterNames, classes }) {
   return (
     <div className="card">
       <div className="hdr"><h3 className="sb xs">{title}</h3></div>
       <div className="divide">
-        {entries.map((e) => <EntryRow key={e.id} sheetId={sheetId} entry={e} editable={editable} />)}
+        {entries.map((e) => <EntryRow key={e.id} sheetId={sheetId} entry={e} editable={editable} classes={classes} />)}
         {entries.length === 0 && <div className="pad muted xs">No wrestlers yet.</div>}
       </div>
       {editable && <AddEntryControl sheetId={sheetId} weightClass={weightClass} rosterNames={rosterNames} />}
@@ -5384,18 +5482,18 @@ function WeightClassSection({ sheetId, weightClass, title, entries, editable, ro
   );
 }
 
-function EntryRow({ sheetId, entry, editable }) {
+function EntryRow({ sheetId, entry, editable, classes }) {
   const { api } = useApp();
   const [name, setName] = useState(entry.name);
   const [weight, setWeight] = useState(entry.weight != null ? String(entry.weight) : "");
   const [level, setLevel] = useState(entry.level || "");
-  const [weightClass, setWeightClass] = useState(entry.weightClass != null ? String(entry.weightClass) : "");
+  const [weightClass, setWeightClass] = useState(entry.weightClass || "");
   const out = entry.available === false;
 
   function save(overrideWeightClass) {
     const wcStr = overrideWeightClass === undefined ? weightClass : overrideWeightClass;
     api.updateEntry(sheetId, entry.id, {
-      weightClass: wcStr ? Number(wcStr) : null,
+      weightClass: wcStr || null,
       name,
       weight: weight ? Number(weight) : null,
       level,
@@ -5421,7 +5519,7 @@ function EntryRow({ sheetId, entry, editable }) {
       <Field label="Class">
         <select className="inp numsm" value={weightClass} onChange={(e) => { setWeightClass(e.target.value); save(e.target.value); }}>
           <option value="">Extra</option>
-          {WEIGHT_CLASS_ORDER.map((wc) => <option key={wc} value={wc}>{WEIGHT_CLASS_LABEL[wc]}</option>)}
+          {classes.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
         </select>
       </Field>
       <button
@@ -5767,6 +5865,7 @@ function TeamsCard() {
               <div className="row gap2 wrapf">
                 <span className="muted xs">{c.wrestlers} wrestlers · {c.practices} practices</span>
                 <TeamBaseline team={t} />
+                <TeamWeightClasses team={t} />
                 <TeamScheduleGenerator team={t} />
                 {teams.length > 1 && (
                   <ConfirmButton
@@ -6036,6 +6135,45 @@ function TeamBaseline({ team }) {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/** Each team weighs in against its own bracket — a youth Cup roster and a
+ * scholastic Elite roster don't share one. Edited as a single comma list
+ * rather than one row per class, matching this app's other free-text
+ * editors and keeping reordering (lightest to heaviest) a plain retype. */
+function TeamWeightClasses({ team }) {
+  const { api } = useApp();
+  const [open, setOpen] = useState(false);
+  const classes = teamWeightClasses(team);
+  const [text, setText] = useState(classes.join(", "));
+
+  function save() {
+    const parsed = text.split(",").map((s) => s.trim()).filter(Boolean);
+    api.updateTeam(team.id, { weightClasses: parsed.length ? parsed : DEFAULT_WEIGHT_CLASSES });
+  }
+
+  if (!open) {
+    return (
+      <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>
+        Weight Classes ({classes.length})
+      </button>
+    );
+  }
+
+  return (
+    <div className="ib pad" style={{ width: "100%", marginTop: 8 }}>
+      <div className="row between wrapf gap2" style={{ marginBottom: 8 }}>
+        <span className="sb xs">{team.name} weight classes</span>
+        <button className="btn btn-ghost btn-sm iconbtn" onClick={() => setOpen(false)}>Done</button>
+      </div>
+      <Field label="Classes, lightest to heaviest (comma-separated)">
+        <input className="inp" style={{ width: "100%" }} value={text} onChange={(e) => setText(e.target.value)} onBlur={save} />
+      </Field>
+      <p className="muted xs" style={{ marginTop: 8 }}>
+        Groups this team's Weigh-In Sheets and fills the Weight Class options on its Squad roster.
+      </p>
     </div>
   );
 }
