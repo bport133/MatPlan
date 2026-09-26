@@ -187,12 +187,14 @@ const CSS = `
    turns into a flat sliver once each column has more room. min-height
    floors it back on narrow screens, where width-driven height would be
    too short to show anything. */
-.cal-cell { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 3px; aspect-ratio: 5 / 3; min-height: 84px; padding: 6px; background: var(--raised); display: flex; flex-direction: column; gap: 4px; }
+.cal-cell { position: relative; overflow: visible; border: 1px solid var(--line); border-radius: 3px; aspect-ratio: 5 / 3; min-height: 84px; padding: 6px; background: var(--raised); display: flex; flex-direction: column; gap: 4px; }
 .cal-cell.sel { border-color: var(--accent); }
 /* The add form sits above the grid so it's visible without scrolling down. */
 .dayadd { border-color: var(--accent); }
 .cal-cell.out { background: #0b0b0b; color: #4a4d50; }
-.cal-cell .pill { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+/* Wrap instead of ellipsis-truncating — a day with a full team + event
+   name pill should show all of it rather than cutting it off. */
+.cal-cell .pill { display: block; max-width: 100%; white-space: normal; word-break: break-word; text-align: left; }
 .cal-evt { display: flex; align-items: center; gap: .5rem; min-width: 0; }
 .cal-evt > .pill { flex: 1; min-width: 0; }
 @media (max-width: 640px) { .cal-cell { min-height: 56px; padding: 4px; font-size: 12px; } }
@@ -1253,7 +1255,6 @@ const emptyWrestlerDetails = () => Object.fromEntries(WRESTLER_DETAIL_FIELDS.map
 
 const WRESTLER_LEVELS = [1, 2, 3, 4];
 const LEVEL_LABEL = { 1: "Beginner", 2: "Intermediate", 3: "Advanced", 4: "Elite" };
-const LEVEL_TONE = { 1: "slate", 2: "blue", 3: "amber", 4: "emerald" };
 
 const teamColor = (team) => (team && team.color) || TEAM_COLORS[0];
 
@@ -4700,7 +4701,7 @@ function WrestlerRow({ wrestler, showTeam }) {
           {!wrestler.active && <Pill label="Inactive" tone="red" />}
         </div>
         <div>
-          {wrestler.level != null && <Pill label={LEVEL_LABEL[wrestler.level] || wrestler.level} tone={LEVEL_TONE[wrestler.level] || "slate"} />}
+          {wrestler.level != null && <Pill label={LEVEL_LABEL[wrestler.level] || wrestler.level} tone="slate" />}
         </div>
         <div className="row gap2">
           {!editing && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit</button>}
