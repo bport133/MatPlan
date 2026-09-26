@@ -6134,12 +6134,18 @@ function EntryRow({ sheetId, entry, editable, classes }) {
       <input className="inp" style={{ maxWidth: 160 }} list="roster-names" placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => save()} />
       <Field label="WT"><input className="inp numsm" value={weight} onChange={(e) => setWeight(e.target.value)} onBlur={() => save()} /></Field>
       <Field label="Level"><input className="inp numsm" value={level} onChange={(e) => setLevel(e.target.value)} onBlur={() => save()} /></Field>
-      <Field label="Class">
-        <select className="inp numsm" value={weightClass} onChange={(e) => { setWeightClass(e.target.value); save(e.target.value); }}>
-          <option value="">Extra</option>
-          {classes.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
-        </select>
-      </Field>
+      {/* Only entries with no weight class (the Extra Wrestlers section) need
+          this picker — anyone already in a class section is already showing
+          it as that section's heading, so repeating it on the row was just
+          the same number twice. */}
+      {!entry.weightClass && (
+        <Field label="Class">
+          <select className="inp numsm" value={weightClass} onChange={(e) => { setWeightClass(e.target.value); save(e.target.value); }}>
+            <option value="">Extra</option>
+            {classes.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
+          </select>
+        </Field>
+      )}
       <button
         className="btn btn-ghost btn-sm"
         title={out ? "Put back on the sheet for this event" : "Scratch for this event only — stays on the squad"}
