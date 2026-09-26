@@ -2516,7 +2516,7 @@ function Dashboard() {
                         {teamName(e.teamId) ? <span className="muted"> · {teamName(e.teamId)}</span> : null}
                       </span>
                       <span className="pill" style={eventPillStyle(colorOf(e.teamId), e.kind === "Practice" ? "practice" : "competition")}>
-                        {e.kind === "Practice" && e.num != null ? `Practice #${e.num}` : e.kind}
+                        {e.kind === "Practice" ? `Practice${e.num != null ? ` #${e.num}` : ""}` : e.name || "Competition"}
                       </span>
                     </div>
                     {e.kind === "Practice" ? (
