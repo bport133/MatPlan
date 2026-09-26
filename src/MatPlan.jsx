@@ -3289,11 +3289,11 @@ function RotationTable({ size }) {
   const rounds = generateRotation(size);
   return (
     <div className="ib">
-      <div className="ibhdr"><span className="sb xs">Groups of {size}</span></div>
+      <div className="ibhdr" style={{ padding: "3px 10px" }}><span className="sb tiny">Groups of {size}</span></div>
       <table>
         <tbody>
           {rounds.map((round, i) => (
-            <tr key={i}>{round.map((pair, j) => <td key={j} className="xs">{pair}</td>)}</tr>
+            <tr key={i}>{round.map((pair, j) => <td key={j} className="tiny" style={{ padding: "2px 10px" }}>{pair}</td>)}</tr>
           ))}
         </tbody>
       </table>
@@ -3303,9 +3303,9 @@ function RotationTable({ size }) {
 function GroupRotation() {
   return (
     <div className="card">
-      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Group Rotations</h2></div>
-      <div className="pad">
-        <div className="grid g2">
+      <div className="hdr" style={{ padding: "6px 12px" }}><h2 className="sb" style={{ fontSize: 13 }}>Live Groups</h2></div>
+      <div className="pad" style={{ padding: 8 }}>
+        <div className="grid g2" style={{ gap: 8 }}>
           <RotationTable size={3} />
           <RotationTable size={4} />
         </div>
