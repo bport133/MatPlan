@@ -2514,15 +2514,9 @@ function Dashboard() {
                       >
                         {fmtDay(e.date)}
                       </span>
-                      <span className="row gap2" style={{ flexShrink: 0 }}>
-                        {teamName(e.teamId) && (
-                          <span className="pill" style={eventPillStyle(colorOf(e.teamId), "practice")}>
-                            {teamName(e.teamId)}
-                          </span>
-                        )}
-                        <span className="pill" style={eventPillStyle(colorOf(e.teamId), e.kind === "Practice" ? "practice" : "competition")}>
-                          {e.kind === "Practice" ? `Practice${e.num != null ? ` #${e.num}` : ""}` : e.name || "Competition"}
-                        </span>
+                      <span className="pill" style={eventPillStyle(colorOf(e.teamId), e.kind === "Practice" ? "practice" : "competition")}>
+                        {teamName(e.teamId) ? `${teamName(e.teamId)} ${e.kind === "Practice" ? "" : "· "}` : ""}
+                        {e.kind === "Practice" ? `Practice${e.num != null ? ` #${e.num}` : ""}` : e.name || "Competition"}
                       </span>
                     </div>
                     {e.kind === "Practice" ? (
