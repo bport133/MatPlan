@@ -1046,6 +1046,17 @@ function parseDateOnly(dateStr) {
 }
 const dateKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
+/** The wrestling season a date falls in, as the year it starts — a season
+ * runs Sept 1 through Aug 31, so June 2027 belongs to the season that
+ * started September 2026, keyed here as 2026. Used to scope practice
+ * numbering (see renumberPractices) so it restarts at 1 each season
+ * instead of running the whole team's history as one long count. */
+function seasonKey(dateStr) {
+  const [y, m] = String(dateStr).split("-").map(Number);
+  return m >= 9 ? y : y - 1;
+}
+const seasonLabel = (startYear) => `${startYear}–${String(startYear + 1).slice(2)}`;
+
 const fmtLong = (s) =>
   parseDateOnly(s).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 const fmtFull = (s) =>
@@ -1573,23 +1584,27 @@ function migrateTeams(saved) {
 }
 
 /**
- * Per-team practice numbering. Walks each team's practices in date order and
- * assigns 1..n — so a team's first practice is #1 regardless of what the other
- * teams were doing that week.
+ * Per-team, per-season practice numbering. Walks each team's practices in
+ * date order within each wrestling season (Sept 1 – Aug 31) and assigns
+ * 1..n — so a team's first practice of a season is #1 regardless of what
+ * the other teams were doing that week, and numbering starts back at 1
+ * again when a new season rolls over rather than running the whole team's
+ * history as one long count.
  *
  * Reconciled practices keep the number they were archived under; the counter
  * steps past them instead. That way fixing the numbering never rewrites the
  * record of a practice that already happened.
  */
 function renumberPractices(practices) {
-  const byTeam = new Map();
+  const byTeamSeason = new Map();
   for (const p of practices) {
-    if (!byTeam.has(p.teamId)) byTeam.set(p.teamId, []);
-    byTeam.get(p.teamId).push(p);
+    const key = `${p.teamId}::${seasonKey(p.date)}`;
+    if (!byTeamSeason.has(key)) byTeamSeason.set(key, []);
+    byTeamSeason.get(key).push(p);
   }
 
   const numbers = new Map();
-  for (const list of byTeam.values()) {
+  for (const list of byTeamSeason.values()) {
     const ordered = [...list].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
     let next = 1;
     for (const p of ordered) {
@@ -2417,7 +2432,8 @@ function makeApi(update) {
      * Practice Plans tab can still create a plan from a date alone while the
      * dashboard captures team, number, times, and location up front.
      *
-     * Practice numbers run per team: Elite can be on #48 while Rookies is on #12.
+     * Practice numbers run per team, per season: Elite can be on #48 while
+     * Rookies is on #12, and both restart at #1 once a new season begins.
      */
     createPractice(input) {
       const o = typeof input === "string" ? { date: input } : input || {};
@@ -2425,7 +2441,9 @@ function makeApi(update) {
       const clean = (v) => (v && String(v).trim() ? String(v).trim() : "");
       update((s) => {
         const teamId = o.teamId || (s.teams[0] && s.teams[0].id) || null;
-        const nums = s.practices.filter((p) => p.teamId === teamId).map((p) => p.practiceNumber || 0);
+        const nums = s.practices
+          .filter((p) => p.teamId === teamId && seasonKey(p.date) === seasonKey(o.date))
+          .map((p) => p.practiceNumber || 0);
         const autoNumber = (nums.length ? Math.max(...nums) : 0) + 1;
         // Fill from the team's baseline (or its last practice) when the caller
         // left these out. An explicit "" still means blank.
@@ -2464,7 +2482,9 @@ function makeApi(update) {
       update((s) => {
         const source = s.practices.find((p) => p.id === sourceId);
         if (!source) return s;
-        const nums = s.practices.filter((p) => p.teamId === source.teamId).map((p) => p.practiceNumber || 0);
+        const nums = s.practices
+          .filter((p) => p.teamId === source.teamId && seasonKey(p.date) === seasonKey(dateStr))
+          .map((p) => p.practiceNumber || 0);
         const autoNumber = (nums.length ? Math.max(...nums) : 0) + 1;
         return {
           ...s,
@@ -3629,7 +3649,10 @@ function PracticeListPage() {
       <div className="card">
         <div className="pad" style={{ paddingBottom: 0 }}><PracticeSubNav /></div>
         <div className="hdr">
-          <h1 className="b" style={{ fontSize: 17 }}>Practice Plans</h1>
+          <span className="row gap2 wrapf">
+            <h1 className="b" style={{ fontSize: 17 }}>Practice Plans</h1>
+            <Pill label={`Season ${seasonLabel(seasonKey(date))}`} tone="slate" />
+          </span>
           <div className="row gap2 wrapf">
             <span className="muted tiny upper">Showing</span>
             <TeamSelect value={teamFilter} onChange={setTeamFilter} allLabel="All Teams" style={{ maxWidth: 180 }} />
@@ -6523,14 +6546,14 @@ function TeamsCard() {
       </div>
       <div className="pad" style={{ paddingTop: 0 }}>
         <p className="muted xs" style={{ marginBottom: 8 }}>
-          Practice numbering runs separately per team — each team's first practice is #1. Deleting a team moves its
-          wrestlers, practices, competitions, and weigh-in sheets to another team rather than erasing them.
+          Practice numbering runs separately per team and restarts at #1 each new season (Sept 1–Aug 31). Deleting a
+          team moves its wrestlers, practices, competitions, and weigh-in sheets to another team rather than erasing them.
         </p>
         <ConfirmButton
           label="Renumber Practices by Team"
           className="btn btn-ghost btn-sm"
           confirmLabel="Renumber"
-          message="Renumber each team's practices 1–n by date? Locked In practices keep their numbers."
+          message="Renumber each team's practices 1–n by date, restarting at 1 each season (Sept 1–Aug 31)? Locked In practices keep their numbers."
           onConfirm={() => api.renumberAllPractices()}
         />
       </div>
