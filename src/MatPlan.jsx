@@ -3734,7 +3734,7 @@ function PracticeEditor({ practiceId }) {
               isLast={i === sortedRows.length - 1}
             />
           ))}
-          {sortedRows.length === 0 && <div className="pad muted xs">No rows yet — add one below.</div>}
+          {sortedRows.length === 0 && <div className="pad muted xs">Build the practice below.</div>}
         </div>
 
         {editable && (
