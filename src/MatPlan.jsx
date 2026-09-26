@@ -391,6 +391,11 @@ const OUTCOME_TONE = {
   PLANNED: "slate", DONE: "emerald", MODIFIED: "amber", SKIPPED: "red", ADDED: "blue",
 };
 
+const WIN_TYPES = ["PIN", "TF", "MD", "DEC", "FF", "INJ", "DQ"];
+const WIN_TYPE_LABEL = {
+  PIN: "Pin", TF: "Tech Fall", MD: "Major Dec.", DEC: "Decision", FF: "Forfeit", INJ: "Injury Default", DQ: "DQ",
+};
+
 // Weight classes are named, reusable sets (state.weightClassSets) — a
 // league's bracket list, e.g. "GRYWL Rookie" or "NYWAY" — not something
 // baked into one team. A team just points at whichever set is its usual
@@ -1658,6 +1663,57 @@ function migrateWrestlerWeight(saved) {
   };
 }
 
+/** Splits a Dual Meet's single team/opponent score into `duals[]`, so one
+ * calendar event can hold more than one dual (a tri- or quad-meet) — each
+ * with its own opponent, score, weight-class-by-weight-class results and
+ * exhibitions — instead of the competition itself only ever describing
+ * one dual. An existing recorded result becomes that event's first dual;
+ * one with nothing recorded yet just starts with an empty list. */
+function migrateCompetitionDuals(saved) {
+  if (!saved.competitions || saved.competitions.every((c) => c.type !== "DUAL" || Array.isArray(c.duals))) return saved;
+  return {
+    ...saved,
+    competitions: saved.competitions.map((c) => {
+      if (c.type !== "DUAL" || Array.isArray(c.duals)) return c;
+      const hasResult = c.teamScore != null || c.oppScore != null || c.resultNote;
+      const weightClasses = weightClassesForTeams(saved, c.teamId ? [c.teamId] : []);
+      const duals = hasResult
+        ? [{
+            id: uid(),
+            opponent: c.name || "Opponent",
+            teamScore: c.teamScore ?? null,
+            oppScore: c.oppScore ?? null,
+            resultNote: c.resultNote ?? null,
+            weightClasses,
+            bouts: reconcileBouts([], weightClasses),
+            exhibitions: [],
+          }]
+        : [];
+      const { teamScore, oppScore, resultNote, ...rest } = c;
+      return { ...rest, duals };
+    }),
+  };
+}
+
+/** Gives every Tournament competition a per-weight-class results table and
+ * a team placement field, for saves made before those existed. */
+function migrateTournamentResults(saved) {
+  if (!saved.competitions || saved.competitions.every((c) => c.type !== "TOURNAMENT" || Array.isArray(c.results))) return saved;
+  return {
+    ...saved,
+    competitions: saved.competitions.map((c) =>
+      c.type === "TOURNAMENT" && !Array.isArray(c.results)
+        ? {
+            ...c,
+            results: [],
+            teamPlacement: c.teamPlacement ?? null,
+            weightClasses: Array.isArray(c.weightClasses) ? c.weightClasses : weightClassesForTeams(saved, c.teamId ? [c.teamId] : []),
+          }
+        : c
+    ),
+  };
+}
+
 /** Backfills an auto-drafted Weigh-In Sheet for any competition saved
  * before createCompetition started drafting one automatically, so an old
  * competition gets one exactly the way a newly created one now does. */
@@ -1840,12 +1896,16 @@ const useApp = () => React.useContext(AppCtx);
 function runMigrations(saved) {
   return migrateCompetitionWeighIns(
     migrateWeighInSheetWeightClasses(
-      migrateEmptyCues(
-        migrateLinks(
-          migrateWrestlerWeight(
-            migrateWeightClassSets(
-              migrateWarmUpLabel(
-                migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))))
+      migrateTournamentResults(
+        migrateCompetitionDuals(
+          migrateEmptyCues(
+            migrateLinks(
+              migrateWrestlerWeight(
+                migrateWeightClassSets(
+                  migrateWarmUpLabel(
+                    migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))))
+                  )
+                )
               )
             )
           )
@@ -2013,6 +2073,19 @@ function usePersistentState() {
 
 /* ============================== ACTIONS (formerly server actions) ============================== */
 
+/** Rebuilds a dual's bout list to match its weight-class list, one row per
+ * class in order — keeping any existing bout for a class that's still in
+ * the list (matched by weight class), dropping one for a class that got
+ * removed, and adding a blank one for a class that's new. Shared by
+ * addDual (building the list fresh) and updateDualWeightClasses
+ * (reconciling it after the coach edits the list). */
+function reconcileBouts(bouts, weightClasses) {
+  const byClass = new Map(bouts.map((b) => [b.weightClass, b]));
+  return weightClasses.map(
+    (wc) => byClass.get(wc) || { id: uid(), weightClass: wc, homeWrestler: "", oppWrestler: "", result: null, winType: null }
+  );
+}
+
 /** Shared by createWeighInSheet, createCompetition (which drafts one
  * automatically), and migrateCompetitionWeighIns (which backfills one for
  * any competition saved before that auto-draft existed) — top-level, not
@@ -2060,6 +2133,13 @@ function makeApi(update) {
     update((s) => ({ ...s, practices: s.practices.map((p) => (p.id === pid ? fn(p) : p)) }));
   const patchSheet = (sid, fn) =>
     update((s) => ({ ...s, weighInSheets: s.weighInSheets.map((x) => (x.id === sid ? fn(x) : x)) }));
+  const patchDual = (competitionId, dualId, fn) =>
+    update((s) => ({
+      ...s,
+      competitions: s.competitions.map((c) =>
+        c.id !== competitionId ? c : { ...c, duals: (c.duals || []).map((d) => (d.id === dualId ? fn(d) : d)) }
+      ),
+    }));
 
   return {
     /* ---- syllabus ---- */
@@ -2620,10 +2700,18 @@ function makeApi(update) {
           location: (input.location || "").trim() || null,
           address: (input.address || "").trim() || null,
           notes: null,
-          teamScore: null,
-          oppScore: null,
-          resultNote: null,
           weighIns: [],
+          // A Dual Meet holds one or more duals (a tri/quad meet is several
+          // duals on one event) — a Tournament instead holds one team-wide
+          // results table, so the two shapes diverge here.
+          ...(input.type === "DUAL"
+            ? { duals: [] }
+            : {
+                teamScore: null,
+                teamPlacement: null,
+                weightClasses: weightClassesForTeams(s, teamId ? [teamId] : []),
+                results: [],
+              }),
         };
         const teamLabel = (s.teams.find((t) => t.id === teamId) || {}).name || s.program.name;
         // Auto-drafted so a coach never has to remember a separate step —
@@ -2642,6 +2730,80 @@ function makeApi(update) {
       return id;
     },
     updateCompetition: (id, data) => patchIn("competitions", id, data),
+
+    /* ---- duals (Dual Meet results — a tri/quad meet is several of these
+     * on one competition) ---- */
+    addDual(competitionId) {
+      update((s) => ({
+        ...s,
+        competitions: s.competitions.map((c) => {
+          if (c.id !== competitionId) return c;
+          const weightClasses = weightClassesForTeams(s, c.teamId ? [c.teamId] : []);
+          const dual = {
+            id: uid(), opponent: "", teamScore: null, oppScore: null, resultNote: null,
+            weightClasses, bouts: reconcileBouts([], weightClasses), exhibitions: [],
+          };
+          return { ...c, duals: [...(c.duals || []), dual] };
+        }),
+      }));
+    },
+    updateDual: (competitionId, dualId, data) => patchDual(competitionId, dualId, (d) => ({ ...d, ...data })),
+    deleteDual(competitionId, dualId) {
+      update((s) => ({
+        ...s,
+        competitions: s.competitions.map((c) =>
+          c.id !== competitionId ? c : { ...c, duals: c.duals.filter((d) => d.id !== dualId) }
+        ),
+      }));
+    },
+    /** Reconciles the bout list to the new class list — see reconcileBouts. */
+    updateDualWeightClasses: (competitionId, dualId, weightClasses) =>
+      patchDual(competitionId, dualId, (d) => ({ ...d, weightClasses, bouts: reconcileBouts(d.bouts, weightClasses) })),
+    updateBout: (competitionId, dualId, boutId, data) =>
+      patchDual(competitionId, dualId, (d) => ({ ...d, bouts: d.bouts.map((b) => (b.id === boutId ? { ...b, ...data } : b)) })),
+    /** Exhibitions aren't tied to the fixed weight-class lineup — open-ended,
+     * added and removed one at a time, and never count toward the score. */
+    addExhibition: (competitionId, dualId) =>
+      patchDual(competitionId, dualId, (d) => ({
+        ...d,
+        exhibitions: [...d.exhibitions, { id: uid(), weightClass: "", homeWrestler: "", oppWrestler: "", result: null, winType: null, notes: "" }],
+      })),
+    updateExhibition: (competitionId, dualId, exhibitionId, data) =>
+      patchDual(competitionId, dualId, (d) => ({
+        ...d,
+        exhibitions: d.exhibitions.map((e) => (e.id === exhibitionId ? { ...e, ...data } : e)),
+      })),
+    deleteExhibition: (competitionId, dualId, exhibitionId) =>
+      patchDual(competitionId, dualId, (d) => ({ ...d, exhibitions: d.exhibitions.filter((e) => e.id !== exhibitionId) })),
+
+    /* ---- tournament results (one team-wide table, not per-dual) ---- */
+    addTournamentResult(competitionId) {
+      update((s) => ({
+        ...s,
+        competitions: s.competitions.map((c) =>
+          c.id !== competitionId
+            ? c
+            : { ...c, results: [...(c.results || []), { id: uid(), weightClass: "", wrestler: "", placement: "", wins: null, losses: null }] }
+        ),
+      }));
+    },
+    updateTournamentResult(competitionId, resultId, data) {
+      update((s) => ({
+        ...s,
+        competitions: s.competitions.map((c) =>
+          c.id !== competitionId ? c : { ...c, results: c.results.map((r) => (r.id === resultId ? { ...r, ...data } : r)) }
+        ),
+      }));
+    },
+    deleteTournamentResult(competitionId, resultId) {
+      update((s) => ({
+        ...s,
+        competitions: s.competitions.map((c) =>
+          c.id !== competitionId ? c : { ...c, results: c.results.filter((r) => r.id !== resultId) }
+        ),
+      }));
+    },
+
     /**
      * Removes a competition. Any weigh-in sheet nested under it is kept — the
      * sheet is the record of what wrestlers actually weighed, so it survives
@@ -4453,11 +4615,28 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast }) {
 
 /* ============================== COMPETITION ============================== */
 
-function competitionOutcome(competition) {
-  if (competition.teamScore == null || competition.oppScore == null) return null;
-  if (competition.teamScore > competition.oppScore) return { label: "Win", tone: "emerald" };
-  if (competition.teamScore < competition.oppScore) return { label: "Loss", tone: "red" };
+/** A single dual's own outcome — used both for its own pill on its DualCard
+ * and folded into dualsRecordFor for the competition header's summary. */
+function dualOutcome(dual) {
+  if (dual.teamScore == null || dual.oppScore == null) return null;
+  if (dual.teamScore > dual.oppScore) return { label: "Win", tone: "emerald" };
+  if (dual.teamScore < dual.oppScore) return { label: "Loss", tone: "red" };
   return { label: "Tie", tone: "slate" };
+}
+
+/** The whole event's dual record — "2-1", say, for a tri-meet — counting
+ * only duals with both scores entered. Null once none of them do yet. */
+function dualsRecordFor(competition) {
+  let w = 0, l = 0, t = 0;
+  for (const d of competition.duals || []) {
+    const o = dualOutcome(d);
+    if (!o) continue;
+    if (o.label === "Win") w++;
+    else if (o.label === "Loss") l++;
+    else t++;
+  }
+  if (w + l + t === 0) return null;
+  return { w, l, t, label: t ? `${w}-${l}-${t}` : `${w}-${l}`, tone: w >= l ? "emerald" : "red" };
 }
 
 function CompetitionDetail({ competitionId }) {
@@ -4497,12 +4676,11 @@ function CompetitionDetail({ competitionId }) {
                 <button className="link xs" onClick={() => go("dashboard")}>← Command Center</button>
                 <span className="b" style={{ fontSize: 17 }}>{competition.name}</span>
                 <Pill label={competition.type === "DUAL" ? "Dual Meet" : "Tournament"} tone="orange" />
-                {competitionOutcome(competition) && (
-                  <Pill
-                    label={`${competitionOutcome(competition).label} ${competition.teamScore}–${competition.oppScore}`}
-                    tone={competitionOutcome(competition).tone}
-                  />
-                )}
+                {competition.type === "DUAL"
+                  ? dualsRecordFor(competition) && (
+                      <Pill label={`Duals ${dualsRecordFor(competition).label}`} tone={dualsRecordFor(competition).tone} />
+                    )
+                  : competition.teamPlacement && <Pill label={`Place: ${competition.teamPlacement}`} tone="slate" />}
               </div>
               <p className="muted xs" style={{ marginTop: 4 }}>
                 {[
@@ -4581,7 +4759,11 @@ function CompetitionDetail({ competitionId }) {
         )}
       </div>
 
-      <CompetitionResult competition={competition} />
+      {competition.type === "DUAL" ? (
+        <DualsSection competition={competition} />
+      ) : (
+        <TournamentResultsSection competition={competition} />
+      )}
 
       <div className="card">
         <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Weigh-In Sheet</h2></div>
@@ -4626,42 +4808,248 @@ function CompetitionDetail({ competitionId }) {
   );
 }
 
-function CompetitionResult({ competition }) {
-  const { api } = useApp();
-  const [teamScore, setTeamScore] = useState(competition.teamScore != null ? String(competition.teamScore) : "");
-  const [oppScore, setOppScore] = useState(competition.oppScore != null ? String(competition.oppScore) : "");
-  const [resultNote, setResultNote] = useState(competition.resultNote || "");
+/* ============================== DUAL MEET RESULTS ============================== */
 
-  const outcome = competitionOutcome(competition);
+function DualsSection({ competition }) {
+  const { state, api } = useApp();
+  const duals = competition.duals || [];
+  const rosterNames = state.wrestlers.filter((w) => w.active && onRosterOf(w, competition.teamId)).sort((a, b) => a.order - b.order);
+
+  return (
+    <div className="grid" style={{ gap: 12 }}>
+      <datalist id="dual-roster-names">{rosterNames.map((r) => <option key={r.id} value={r.name} />)}</datalist>
+      {duals.map((d) => <DualCard key={d.id} competitionId={competition.id} dual={d} />)}
+      <div className="card pad">
+        <button className="btn btn-g btn-sm" onClick={() => api.addDual(competition.id)}>+ Add Dual</button>
+        {duals.length === 0 && (
+          <p className="muted xs" style={{ marginTop: 8 }}>
+            No duals recorded yet — add one for each opponent faced at this event (more than one for a tri- or quad-meet).
+            Fill in the wrestler match-ups ahead of time as a line-up sheet, then come back and add results after.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DualCard({ competitionId, dual }) {
+  const { api, state, showUndoToast } = useApp();
+  const [open, setOpen] = useState(false);
+  const [opponent, setOpponent] = useState(dual.opponent || "");
+  const [teamScore, setTeamScore] = useState(dual.teamScore != null ? String(dual.teamScore) : "");
+  const [oppScore, setOppScore] = useState(dual.oppScore != null ? String(dual.oppScore) : "");
+  const [resultNote, setResultNote] = useState(dual.resultNote || "");
+  const outcome = dualOutcome(dual);
+
+  function save(patch) {
+    api.updateDual(competitionId, dual.id, patch);
+  }
 
   return (
     <div className="card">
-      <div className="hdr">
-        <span className="row gap2"><h2 className="sb" style={{ fontSize: 15 }}>Result</h2>{outcome && <Pill label={outcome.label} tone={outcome.tone} />}</span>
+      <div className="hdr click" onClick={() => setOpen((v) => !v)}>
+        <span className="row gap2 wrapf">
+          <h2 className="sb" style={{ fontSize: 15 }}>{dual.opponent || "New Dual"}</h2>
+          {outcome && <Pill label={`${outcome.label} ${dual.teamScore}–${dual.oppScore}`} tone={outcome.tone} />}
+        </span>
+        <button className="btn btn-ghost btn-sm iconbtn" onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}>
+          {open ? "▲" : "▼"}
+        </button>
       </div>
       <div className="pad row gap2 wrapf">
+        <Field label="Opponent">
+          <input className="inp" style={{ maxWidth: 200 }} value={opponent} onChange={(e) => setOpponent(e.target.value)} onBlur={() => save({ opponent: opponent.trim() || null })} />
+        </Field>
         <Field label="Your Score">
-          <input
-            className="inp numsm" value={teamScore}
-            onChange={(e) => setTeamScore(e.target.value)}
-            onBlur={() => api.updateCompetition(competition.id, { teamScore: teamScore.trim() ? Number(teamScore) : null })}
-          />
+          <input className="inp numsm" value={teamScore} onChange={(e) => setTeamScore(e.target.value)} onBlur={() => save({ teamScore: teamScore.trim() ? Number(teamScore) : null })} />
         </Field>
         <Field label="Opponent Score">
+          <input className="inp numsm" value={oppScore} onChange={(e) => setOppScore(e.target.value)} onBlur={() => save({ oppScore: oppScore.trim() ? Number(oppScore) : null })} />
+        </Field>
+        <Field label="Notes" style={{ flex: 1, minWidth: 180 }}>
+          <input className="inp" placeholder="Placement, standout performances, etc." value={resultNote} onChange={(e) => setResultNote(e.target.value)} onBlur={() => save({ resultNote: resultNote.trim() || null })} />
+        </Field>
+        <ConfirmButton
+          label="Delete Dual"
+          confirmLabel="Delete"
+          message="Delete this dual and its weight-class results?"
+          onConfirm={() => {
+            const snapshot = state;
+            api.deleteDual(competitionId, dual.id);
+            showUndoToast("Dual removed", snapshot);
+          }}
+        />
+      </div>
+
+      {open && (
+        <>
+          <div className="pad" style={{ paddingTop: 0, maxWidth: 320 }}>
+            <Field label="Weight Classes">
+              <WeightClassesPicker value={dual.weightClasses} onChange={(next) => api.updateDualWeightClasses(competitionId, dual.id, next)} />
+            </Field>
+          </div>
+
+          <div className="divide">
+            {dual.bouts.map((b) => <BoutRow key={b.id} competitionId={competitionId} dualId={dual.id} bout={b} />)}
+            {dual.bouts.length === 0 && <div className="pad muted xs">No weight classes set yet.</div>}
+          </div>
+
+          <div className="pad" style={{ borderTop: "1px solid var(--line)" }}>
+            <div className="seclbl" style={{ marginBottom: 8 }}>Exhibitions</div>
+            <div className="divide">
+              {dual.exhibitions.map((e) => <ExhibitionRow key={e.id} competitionId={competitionId} dualId={dual.id} exhibition={e} />)}
+              {dual.exhibitions.length === 0 && <div className="muted xs" style={{ marginBottom: 8 }}>No exhibition matches recorded.</div>}
+            </div>
+            <button className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => api.addExhibition(competitionId, dual.id)}>
+              + Add Exhibition
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ResultSelect({ value, onChange }) {
+  return (
+    <select className="inp numsm" value={value || ""} onChange={(e) => onChange(e.target.value || null)}>
+      <option value="">—</option>
+      <option value="W">Win</option>
+      <option value="L">Loss</option>
+    </select>
+  );
+}
+
+function WinTypeSelect({ value, onChange, disabled }) {
+  return (
+    <select className="inp numsm" value={value || ""} onChange={(e) => onChange(e.target.value || null)} disabled={disabled}>
+      <option value="">Type</option>
+      {WIN_TYPES.map((t) => <option key={t} value={t}>{WIN_TYPE_LABEL[t]}</option>)}
+    </select>
+  );
+}
+
+function BoutRow({ competitionId, dualId, bout }) {
+  const { api } = useApp();
+  const [home, setHome] = useState(bout.homeWrestler || "");
+  const [opp, setOpp] = useState(bout.oppWrestler || "");
+
+  function save(patch) {
+    api.updateBout(competitionId, dualId, bout.id, patch);
+  }
+
+  return (
+    <div className="pad row gap2 wrapf">
+      <span className="sb xs" style={{ minWidth: 44 }}>{bout.weightClass}</span>
+      <input
+        className="inp" style={{ maxWidth: 160 }} list="dual-roster-names" placeholder="Your wrestler" value={home}
+        onChange={(e) => setHome(e.target.value)} onBlur={() => save({ homeWrestler: home })}
+      />
+      <input
+        className="inp" style={{ maxWidth: 160 }} placeholder="Opponent" value={opp}
+        onChange={(e) => setOpp(e.target.value)} onBlur={() => save({ oppWrestler: opp })}
+      />
+      <ResultSelect value={bout.result} onChange={(v) => save({ result: v })} />
+      <WinTypeSelect value={bout.winType} onChange={(v) => save({ winType: v })} disabled={!bout.result} />
+    </div>
+  );
+}
+
+function ExhibitionRow({ competitionId, dualId, exhibition }) {
+  const { api } = useApp();
+  const [weightClass, setWeightClass] = useState(exhibition.weightClass || "");
+  const [home, setHome] = useState(exhibition.homeWrestler || "");
+  const [opp, setOpp] = useState(exhibition.oppWrestler || "");
+  const [notes, setNotes] = useState(exhibition.notes || "");
+
+  function save(patch) {
+    api.updateExhibition(competitionId, dualId, exhibition.id, patch);
+  }
+
+  return (
+    <div className="pad row gap2 wrapf">
+      <input className="inp numsm" placeholder="Wt" style={{ maxWidth: 60 }} value={weightClass} onChange={(e) => setWeightClass(e.target.value)} onBlur={() => save({ weightClass })} />
+      <input
+        className="inp" style={{ maxWidth: 150 }} list="dual-roster-names" placeholder="Your wrestler" value={home}
+        onChange={(e) => setHome(e.target.value)} onBlur={() => save({ homeWrestler: home })}
+      />
+      <input
+        className="inp" style={{ maxWidth: 150 }} placeholder="Opponent" value={opp}
+        onChange={(e) => setOpp(e.target.value)} onBlur={() => save({ oppWrestler: opp })}
+      />
+      <ResultSelect value={exhibition.result} onChange={(v) => save({ result: v })} />
+      <WinTypeSelect value={exhibition.winType} onChange={(v) => save({ winType: v })} />
+      <input
+        className="inp" style={{ flex: 1, minWidth: 120 }} placeholder="Notes" value={notes}
+        onChange={(e) => setNotes(e.target.value)} onBlur={() => save({ notes })}
+      />
+      <ConfirmButton label="Delete" confirmLabel="Remove" message="Remove this exhibition?" onConfirm={() => api.deleteExhibition(competitionId, dualId, exhibition.id)} />
+    </div>
+  );
+}
+
+/* ============================== TOURNAMENT RESULTS ============================== */
+
+function TournamentResultsSection({ competition }) {
+  const { api, state } = useApp();
+  const [teamScore, setTeamScore] = useState(competition.teamScore != null ? String(competition.teamScore) : "");
+  const [teamPlacement, setTeamPlacement] = useState(competition.teamPlacement || "");
+  const results = competition.results || [];
+  const classes = Array.isArray(competition.weightClasses)
+    ? competition.weightClasses
+    : weightClassesForTeams(state, competition.teamId ? [competition.teamId] : []);
+
+  return (
+    <div className="card">
+      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Tournament Results</h2></div>
+      <div className="pad row gap2 wrapf">
+        <Field label="Team Score">
+          <input className="inp numsm" value={teamScore} onChange={(e) => setTeamScore(e.target.value)} onBlur={() => api.updateCompetition(competition.id, { teamScore: teamScore.trim() ? Number(teamScore) : null })} />
+        </Field>
+        <Field label="Team Placement">
           <input
-            className="inp numsm" value={oppScore}
-            onChange={(e) => setOppScore(e.target.value)}
-            onBlur={() => api.updateCompetition(competition.id, { oppScore: oppScore.trim() ? Number(oppScore) : null })}
+            className="inp" style={{ maxWidth: 150 }} placeholder="e.g. 3rd of 12" value={teamPlacement}
+            onChange={(e) => setTeamPlacement(e.target.value)}
+            onBlur={() => api.updateCompetition(competition.id, { teamPlacement: teamPlacement.trim() || null })}
           />
         </Field>
-        <Field label="Result Notes" style={{ flex: 1, minWidth: 200 }}>
-          <input
-            className="inp" placeholder="Placement, standout performances, etc." value={resultNote}
-            onChange={(e) => setResultNote(e.target.value)}
-            onBlur={() => api.updateCompetition(competition.id, { resultNote: resultNote.trim() || null })}
-          />
+        <Field label="Weight Classes" style={{ flex: 1, minWidth: 220 }}>
+          <WeightClassesPicker value={classes} onChange={(next) => api.updateCompetition(competition.id, { weightClasses: next })} />
         </Field>
       </div>
+      <div className="divide">
+        {results.map((r) => <TournamentResultRow key={r.id} competitionId={competition.id} result={r} classes={classes} />)}
+        {results.length === 0 && <div className="pad muted xs">No weight-class results yet.</div>}
+      </div>
+      <div className="pad">
+        <button className="btn btn-ghost btn-sm" onClick={() => api.addTournamentResult(competition.id)}>+ Add Weight Class Result</button>
+      </div>
+    </div>
+  );
+}
+
+function TournamentResultRow({ competitionId, result, classes }) {
+  const { api } = useApp();
+  const [wrestler, setWrestler] = useState(result.wrestler || "");
+  const [placement, setPlacement] = useState(result.placement || "");
+  const [wins, setWins] = useState(result.wins != null ? String(result.wins) : "");
+  const [losses, setLosses] = useState(result.losses != null ? String(result.losses) : "");
+
+  function save(patch) {
+    api.updateTournamentResult(competitionId, result.id, patch);
+  }
+
+  return (
+    <div className="pad row gap2 wrapf">
+      <select className="inp numsm" value={result.weightClass || ""} onChange={(e) => save({ weightClass: e.target.value })}>
+        <option value="">Wt</option>
+        {classes.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <input className="inp" style={{ maxWidth: 160 }} placeholder="Wrestler" value={wrestler} onChange={(e) => setWrestler(e.target.value)} onBlur={() => save({ wrestler })} />
+      <input className="inp numsm" placeholder="Place" value={placement} onChange={(e) => setPlacement(e.target.value)} onBlur={() => save({ placement: placement.trim() || null })} />
+      <Field label="W"><input className="inp numsm" value={wins} onChange={(e) => setWins(e.target.value)} onBlur={() => save({ wins: wins.trim() ? Number(wins) : null })} /></Field>
+      <Field label="L"><input className="inp numsm" value={losses} onChange={(e) => setLosses(e.target.value)} onBlur={() => save({ losses: losses.trim() ? Number(losses) : null })} /></Field>
+      <ConfirmButton label="Delete" confirmLabel="Remove" message="Remove this result?" onConfirm={() => api.deleteTournamentResult(competitionId, result.id)} />
     </div>
   );
 }
