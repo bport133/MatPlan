@@ -1871,16 +1871,25 @@ function usePersistentState() {
   const [state, setState] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const dirty = useRef(false);
-  // Version counters guard against a stale realtime echo clobbering a local
-  // edit that hasn't been confirmed saved yet. Every local update() bumps
-  // localVersion; a save only marks savedVersion once it lands. An incoming
-  // realtime payload is only applied when the two match — i.e. nothing local
-  // is still in flight — otherwise it's dropped, since our own pending save
-  // will supersede it anyway. Without this, an in-flight save from *before*
-  // the local edit could echo back after it and silently overwrite it.
-  const localVersion = useRef(0);
-  const savedVersion = useRef(0);
+  // Every local edit stamps the state it produces with a monotonic `_rev`
+  // (see update() below) and a realtime echo is only applied if its own
+  // `_rev` is at least as new as the highest one we've produced or already
+  // applied. This guards against out-of-order delivery, not just an edit
+  // still "in flight": Realtime's WebSocket push and our own upsert()'s
+  // REST response race independently, so an older save's echo can easily
+  // arrive *after* a newer save's — a plain "is anything pending" flag
+  // (what this used to be) can't tell old from new once two saves overlap,
+  // and briefly applying the older one is exactly what looked like a
+  // just-added row flashing off before the correct data reasserted itself.
+  // Comparing the payload's own `_rev` instead makes the check correct
+  // regardless of arrival order.
+  const lastRev = useRef(0);
   const { user } = useAuth();
+  const nextRev = () => {
+    const rev = Math.max(Date.now(), lastRev.current + 1);
+    lastRev.current = rev;
+    return rev;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -1905,7 +1914,7 @@ function usePersistentState() {
         // one. Saving right away, once, makes it permanent instead.
         if (migrated !== next) {
           dirty.current = true;
-          localVersion.current += 1;
+          migrated = { ...migrated, _rev: nextRev() };
         }
         setState(migrated);
         setLoaded(true);
@@ -1940,7 +1949,7 @@ function usePersistentState() {
         // be saved right away, not left for the next real edit to flush.
         if (next !== before) {
           dirty.current = true;
-          localVersion.current += 1;
+          next = { ...next, _rev: nextRev() };
         }
       }
       if (cancelled) return;
@@ -1954,12 +1963,17 @@ function usePersistentState() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: APP_STATE_TABLE, filter: `id=eq.${APP_STATE_ROW_ID}` },
         (payload) => {
-          // Drop this payload unless every local edit has already been saved.
-          // Otherwise it may be a stale echo (or another coach's concurrent
-          // change) that would clobber an edit still in flight; our own
-          // pending save will reconcile once it lands.
-          if (localVersion.current !== savedVersion.current) return;
-          if (payload.new && payload.new.data) setState(payload.new.data);
+          const incoming = payload.new && payload.new.data;
+          if (!incoming) return;
+          // Drop anything older than the newest revision we've produced or
+          // already applied — an echo of our own save, a duplicate, or a
+          // stale delivery that lost the race with a newer one. Only a
+          // payload at least that new (our own latest save landing, or a
+          // genuinely newer edit from another coach) gets applied.
+          const incomingRev = incoming._rev || 0;
+          if (incomingRev < lastRev.current) return;
+          lastRev.current = incomingRev;
+          setState(incoming);
         }
       )
       .subscribe();
@@ -1980,24 +1994,18 @@ function usePersistentState() {
         } catch (err) { /* storage unavailable — session-only */ }
         return;
       }
-      // Snapshot which local edit this save covers. If update() bumps
-      // localVersion again before this resolves, savedVersion will land
-      // behind it, correctly keeping the realtime guard closed until the
-      // *next* save (covering that later edit) completes.
-      const myVersion = localVersion.current;
       const { error } = await supabase
         .from(APP_STATE_TABLE)
         .upsert({ id: APP_STATE_ROW_ID, data: state, updated_at: new Date().toISOString(), updated_by: user?.email || null });
       if (error) console.error("Failed to save shared state:", error);
-      else savedVersion.current = myVersion;
     }, 350);
     return () => clearTimeout(t);
   }, [state, loaded]);
 
   const update = React.useCallback((fn) => {
     dirty.current = true;
-    localVersion.current += 1;
-    setState((s) => fn(s));
+    const rev = nextRev();
+    setState((s) => ({ ...fn(s), _rev: rev }));
   }, []);
 
   return { state, update, loaded };
