@@ -309,6 +309,20 @@ const CSS = `
      under display: inline; drop the width so they size to their content
      and stay on the label's line instead. */
   .mp .thead input, .mp .thead select { display: inline !important; width: auto !important; }
+  /*
+   * The calendar month grid otherwise only takes the height its cells need
+   * at 5:3 aspect ratio, leaving the bottom quarter of the page blank.
+   * Give the page's one visible section (everything else on Dashboard is
+   * .no-print) the full printable height, then let that height cascade
+   * down to the day grid so every row — 5 or 6 depending on the month —
+   * shares it evenly instead of sizing off the column width.
+   */
+  .mp .wrap:has(.dash-grid) { padding: 0 !important; max-width: none !important; }
+  .mp .dash-grid { height: 99vh; overflow: hidden; display: flex; flex-direction: column; }
+  .mp .cal-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .mp .cal-card .pad { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .mp .cal-card .pad > .cal-grid:last-child { flex: 1; min-height: 0; grid-auto-rows: 1fr; }
+  .mp .cal-card .cal-cell { aspect-ratio: auto; height: 100%; min-height: 0; }
 }
 `;
 
@@ -2482,7 +2496,7 @@ function Dashboard() {
   for (const w of weeks) w.events = events.filter((e) => e.date >= w.startK && e.date <= w.endK);
 
   return (
-    <div className="grid" style={{ gap: 20 }}>
+    <div className="grid dash-grid" style={{ gap: 20 }}>
       <QuickLinksStrip />
 
       <div className="card no-print">
@@ -2600,7 +2614,7 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
   };
 
   return (
-    <div className="card">
+    <div className="card cal-card">
       <div className="hdr" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
         <div className="row gap2 wrapf">
           <span className="muted tiny upper">Team</span>
