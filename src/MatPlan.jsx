@@ -182,21 +182,27 @@ const CSS = `
  * the content wrap or ellipsis inside the cell instead.
  */
 .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
-/* aspect-ratio scales cell height with the column's width so cells stay a
-   sensible shape as the page gets wider, instead of a fixed height that
-   turns into a flat sliver once each column has more room. min-height
-   floors it back on narrow screens, where width-driven height would be
-   too short to show anything. */
-.cal-cell { position: relative; overflow: visible; border: 1px solid var(--line); border-radius: 3px; aspect-ratio: 5 / 3; min-height: 84px; padding: 6px; background: var(--raised); display: flex; flex-direction: column; gap: 4px; }
+/* min-height is a floor for empty/light days — grid's default row sizing
+   (each row as tall as its tallest cell, with every cell in that row
+   stretched to match) takes it from there, so a day with several wrapped
+   pills grows the whole row instead of being clipped by a fixed shape. */
+.cal-cell {
+  position: relative; overflow-x: hidden; overflow-y: visible; border: 1px solid var(--line); border-radius: 3px;
+  min-height: 84px; padding: 6px; background: var(--raised); display: flex; flex-direction: column; gap: 4px;
+}
 .cal-cell.sel { border-color: var(--accent); }
 /* The add form sits above the grid so it's visible without scrolling down. */
 .dayadd { border-color: var(--accent); }
 .cal-cell.out { background: #0b0b0b; color: #4a4d50; }
 /* Wrap instead of ellipsis-truncating — a day with a full team + event
-   name pill should show all of it rather than cutting it off. */
+   name pill should show all of it rather than cutting it off. overflow-x
+   above keeps that growth (and the delete button beside it) from ever
+   spilling past the day's own column into the next one. */
 .cal-cell .pill { display: block; max-width: 100%; white-space: normal; word-break: break-word; text-align: left; }
-.cal-evt { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.cal-evt { display: flex; align-items: center; gap: .35rem; min-width: 0; }
 .cal-evt > .pill { flex: 1; min-width: 0; }
+.cal-evt .iconbtn { padding: 1px 5px; font-size: 10px; line-height: 1.4; flex-shrink: 0; }
+.cal-add { align-self: flex-start; margin-top: auto; }
 @media (max-width: 640px) { .cal-cell { min-height: 56px; padding: 4px; font-size: 12px; } }
 
 .flyout { display: flex; align-items: stretch; gap: 0; overflow-x: auto; }
@@ -2958,12 +2964,7 @@ function DayAddPanel({ dateStr, defaultTeamId, onClose, go }) {
 function CalendarDay({ dateStr, dayNum, inMonth, isToday, selected, entry, onAdd, onSelect, previewId, teamLabel, colorOf, go }) {
   return (
     <div className={`cal-cell${inMonth ? "" : " out"}${selected ? " sel" : ""}`}>
-      <div className="row between">
-        <span className="xs sb" style={isToday ? { color: "var(--accent)" } : undefined}>{dayNum}</span>
-        {inMonth && (
-          <button className="btn btn-ghost btn-sm" style={{ padding: "0 4px" }} onClick={onAdd} title="Add to this day">+</button>
-        )}
-      </div>
+      <span className="xs sb" style={isToday ? { color: "var(--accent)" } : undefined}>{dayNum}</span>
 
       {entry.practices.map((p) => (
         <div key={p.id} className="cal-evt">
@@ -2993,6 +2994,10 @@ function CalendarDay({ dateStr, dayNum, inMonth, isToday, selected, entry, onAdd
           <DeleteCompetitionButton competitionId={c.id} label="✕" />
         </div>
       ))}
+
+      {inMonth && (
+        <button className="btn btn-ghost btn-sm cal-add" style={{ padding: "0 4px" }} onClick={onAdd} title="Add to this day">+</button>
+      )}
     </div>
   );
 }
