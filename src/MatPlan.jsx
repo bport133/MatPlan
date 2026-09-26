@@ -243,12 +243,13 @@ const CSS = `
  */
 .qlinks-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .qlink-tile {
-  display: flex; align-items: center; justify-content: center; text-align: center;
+  display: flex; align-items: center; justify-content: center; gap: 7px; text-align: center;
   padding: 9px 10px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--line);
   color: var(--text); text-decoration: none; font-family: var(--font-heading); font-weight: 600;
   font-size: 13px; transition: .15s;
 }
 .qlink-tile:hover { border-color: var(--accent); color: var(--accent); background: var(--raised); }
+.qlink-icon { width: 16px; height: 16px; flex-shrink: 0; border-radius: 3px; }
 
 .rte { border: 1px solid var(--line); border-radius: 3px; background: var(--panel2); overflow: hidden; }
 .rte-toolbar { display: flex; gap: 2px; padding: 4px; border-bottom: 1px solid var(--line); background: var(--panel); }
@@ -934,6 +935,18 @@ const pad2 = (n) => String(n).padStart(2, "0");
 function hrefFor(url) {
   const trimmed = (url || "").trim();
   return /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+/** A small per-site icon for a Quick Link, via Google's public favicon
+ *  service — no API key, no backend, and it already has a generic
+ *  fallback icon for sites that don't serve their own favicon. */
+function faviconFor(url) {
+  try {
+    const { hostname } = new URL(hrefFor(url));
+    return `https://www.google.com/s2/favicons?sz=64&domain=${hostname}`;
+  } catch {
+    return null;
+  }
 }
 
 function todayStr() {
@@ -2654,6 +2667,7 @@ function QuickLinksStrip() {
       <div className="qlinks-grid">
         {state.links.map((l) => (
           <a key={l.id} href={hrefFor(l.url)} target="_blank" rel="noopener noreferrer" className="qlink-tile">
+            <img className="qlink-icon" src={faviconFor(l.url)} alt="" onError={(e) => { e.target.style.display = "none"; }} />
             {l.label}
           </a>
         ))}
@@ -5465,6 +5479,7 @@ function QuickLinksCard() {
           {links.map((l, i) => (
             <div key={l.id} className="pad row between wrapf gap2">
               <div className="row gap2 wrapf" style={{ flex: 1, minWidth: 0 }}>
+                <img className="qlink-icon" src={faviconFor(l.url)} alt="" onError={(e) => { e.target.style.display = "none"; }} />
                 <input
                   className="inp"
                   style={{ maxWidth: 200 }}
