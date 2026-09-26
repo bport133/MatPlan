@@ -122,6 +122,13 @@ const CSS = `
 .hdr { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
 .pad { padding: 12px; }
 
+.undo-toast {
+  position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 1000;
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 4px;
+  background: var(--panel2); border: 1px solid var(--line); box-shadow: 0 4px 16px rgba(0,0,0,.35);
+  font-size: 14px; max-width: calc(100vw - 32px);
+}
+
 .inp {
   width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 3px;
   padding: .4rem .6rem; font-size: .9375rem; color: var(--text); outline: none; font-family: inherit;
@@ -203,7 +210,14 @@ const CSS = `
 .cal-evt > .pill { flex: 1; min-width: 0; }
 .cal-evt .iconbtn { padding: 1px 5px; font-size: 10px; line-height: 1.4; flex-shrink: 0; }
 .cal-add { align-self: flex-start; margin-top: auto; }
-@media (max-width: 640px) { .cal-cell { min-height: 56px; padding: 4px; font-size: 12px; } }
+@media (max-width: 640px) {
+  .cal-cell { min-height: 56px; padding: 4px; font-size: 12px; }
+  /* A 7-column grid this narrow doesn't have room to wrap a full team +
+     event name legibly — word-break falls back to splitting mid-word,
+     letter by letter. Truncate to one line instead; tapping the chip
+     still opens the full name in the day's preview popover. */
+  .cal-cell .pill { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; word-break: normal; }
+}
 
 .flyout { display: flex; align-items: stretch; gap: 0; overflow-x: auto; }
 .flyout-col { min-width: 250px; max-width: 250px; flex: none; padding: 12px; border-right: 1px solid var(--line); }
@@ -1151,6 +1165,7 @@ function ConfirmButton({
   className = "btn btn-ghost btn-sm iconbtn",
   confirmClassName = "btn btn-o btn-sm",
   title,
+  ariaLabel,
   disabled,
   onConfirm,
 }) {
@@ -1175,6 +1190,7 @@ function ConfirmButton({
         <button
           className={className}
           title={title}
+          aria-label={ariaLabel}
           disabled={disabled}
           onClick={(e) => { e.stopPropagation(); setError(null); setAsking(true); }}
         >
@@ -1922,6 +1938,16 @@ function makeApi(update) {
     },
     updateLink: (id, data) => patchIn("links", id, data),
     removeLink: (id) => removeFrom("links", id),
+    moveLink(id, direction) {
+      update((s) => {
+        const links = [...s.links];
+        const i = links.findIndex((l) => l.id === id);
+        const j = direction === "up" ? i - 1 : i + 1;
+        if (i === -1 || j < 0 || j >= links.length) return s;
+        [links[i], links[j]] = [links[j], links[i]];
+        return { ...s, links };
+      });
+    },
 
     /**
      * Reassigning a practice's team also pulls it into that team's number
@@ -2996,7 +3022,7 @@ function CalendarDay({ dateStr, dayNum, inMonth, isToday, selected, entry, onAdd
       ))}
 
       {inMonth && (
-        <button className="btn btn-ghost btn-sm cal-add" style={{ padding: "0 4px" }} onClick={onAdd} title="Add to this day">+</button>
+        <button className="btn btn-ghost btn-sm cal-add" style={{ padding: "0 4px" }} onClick={onAdd} title="Add to this day" aria-label="Add to this day">+</button>
       )}
     </div>
   );
@@ -3084,18 +3110,23 @@ function PracticeListPage() {
 }
 
 function DeletePracticeButton({ practiceId, label = "Delete Draft", onDeleted }) {
-  const { state, api } = useApp();
+  const { state, api, showUndoToast } = useApp();
   const practice = state.practices.find((p) => p.id === practiceId);
+  const bare = label === "✕";
 
   return (
     <ConfirmButton
       label={label}
+      title={bare ? "Delete practice" : undefined}
+      ariaLabel={bare ? "Delete practice" : undefined}
       message="Delete this plan?"
       onConfirm={() => {
         if (practice && practice.reconciledAt) {
           return "Locked In practices can't be deleted — reopen it for editing first.";
         }
+        const snapshot = state;
         api.deletePractice(practiceId);
+        showUndoToast("Practice removed", snapshot);
         if (onDeleted) onDeleted();
       }}
     />
@@ -3133,19 +3164,24 @@ function TeamCheckboxes({ wrestler }) {
 }
 
 function DeleteCompetitionButton({ competitionId, label = "Delete", onDeleted }) {
-  const { state, api } = useApp();
+  const { state, api, showUndoToast } = useApp();
   const competition = state.competitions.find((c) => c.id === competitionId);
   const recorded = competition ? competition.weighIns.length : 0;
+  const bare = label === "✕";
 
   return (
     <ConfirmButton
       label={label}
+      title={bare ? "Delete competition" : undefined}
+      ariaLabel={bare ? "Delete competition" : undefined}
       message={recorded
         ? `Delete this competition and ${recorded} recorded weigh-in${recorded === 1 ? "" : "s"}?`
         : "Delete this competition?"}
       onConfirm={() => {
         if (!competition) return;
+        const snapshot = state;
         api.deleteCompetition(competitionId);
+        showUndoToast("Competition removed", snapshot);
         if (onDeleted) onDeleted();
       }}
     />
@@ -3878,8 +3914,8 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast }) {
         </div>
         {editable && (
           <div className="row gap2">
-            <button className="btn btn-ghost btn-sm iconbtn" disabled={isFirst} title="Move up" onClick={() => api.moveRow(practiceId, row.id, "up")}>↑</button>
-            <button className="btn btn-ghost btn-sm iconbtn" disabled={isLast} title="Move down" onClick={() => api.moveRow(practiceId, row.id, "down")}>↓</button>
+            <button className="btn btn-ghost btn-sm iconbtn" disabled={isFirst} title="Move up" aria-label="Move up" onClick={() => api.moveRow(practiceId, row.id, "up")}>↑</button>
+            <button className="btn btn-ghost btn-sm iconbtn" disabled={isLast} title="Move down" aria-label="Move down" onClick={() => api.moveRow(practiceId, row.id, "down")}>↓</button>
             <button className="btn btn-ghost btn-sm iconbtn" onClick={() => api.deleteRow(practiceId, row.id)}>Remove</button>
           </div>
         )}
@@ -4681,7 +4717,7 @@ function RosterPage() {
 }
 
 function WrestlerRow({ wrestler, showTeam }) {
-  const { state, api } = useApp();
+  const { state, api, showUndoToast } = useApp();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(wrestler.name);
   const [weightClass, setWeightClass] = useState(wrestler.weightClass != null ? String(wrestler.weightClass) : "");
@@ -4744,7 +4780,11 @@ function WrestlerRow({ wrestler, showTeam }) {
             label="Delete"
             confirmLabel="Remove"
             message="Remove from the squad?"
-            onConfirm={() => api.deleteWrestler(wrestler.id)}
+            onConfirm={() => {
+              const snapshot = state;
+              api.deleteWrestler(wrestler.id);
+              showUndoToast(`${wrestler.name || "Wrestler"} removed`, snapshot);
+            }}
           />
         </div>
       )}
@@ -4824,7 +4864,7 @@ function WeighInListPage() {
 }
 
 function WeighInSheetForm({ sheetId }) {
-  const { state, api, go } = useApp();
+  const { state, api, go, showUndoToast } = useApp();
   const sheet = state.weighInSheets.find((s) => s.id === sheetId);
   const [editingHeader, setEditingHeader] = useState(false);
   const [date, setDate] = useState(sheet ? sheet.date : todayStr());
@@ -4930,7 +4970,12 @@ function WeighInSheetForm({ sheetId }) {
           <ConfirmButton
             label="Delete Sheet"
             message="Delete this sheet and its recorded weights?"
-            onConfirm={() => { api.deleteWeighInSheet(sheet.id); go("weighin"); }}
+            onConfirm={() => {
+              const snapshot = state;
+              api.deleteWeighInSheet(sheet.id);
+              showUndoToast("Weigh-in sheet removed", snapshot);
+              go("weighin");
+            }}
           />
         </div>
       </div>
@@ -5109,7 +5154,7 @@ function HistoryCategoryList({ category, title, records }) {
 }
 
 function HistoryRow({ record }) {
-  const { api } = useApp();
+  const { state, api, showUndoToast } = useApp();
   const [editing, setEditing] = useState(false);
   const [weight, setWeight] = useState(record.weight);
   const [name, setName] = useState(record.name);
@@ -5148,7 +5193,11 @@ function HistoryRow({ record }) {
         label="Delete"
         confirmLabel="Remove"
         message="Remove from this list?"
-        onConfirm={() => api.deleteHistoryRecord(record.id)}
+        onConfirm={() => {
+          const snapshot = state;
+          api.deleteHistoryRecord(record.id);
+          showUndoToast(`${record.name || "Record"} removed`, snapshot);
+        }}
       />
     </div>
   );
@@ -5396,7 +5445,7 @@ function TeamsCard() {
  * resulting list, read-only.
  */
 function QuickLinksCard() {
-  const { state, api } = useApp();
+  const { state, api, showUndoToast } = useApp();
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
   const links = state.links;
@@ -5413,7 +5462,7 @@ function QuickLinksCard() {
       <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Team Links</h2></div>
       {links.length > 0 && (
         <div className="divide">
-          {links.map((l) => (
+          {links.map((l, i) => (
             <div key={l.id} className="pad row between wrapf gap2">
               <div className="row gap2 wrapf" style={{ flex: 1, minWidth: 0 }}>
                 <input
@@ -5429,11 +5478,19 @@ function QuickLinksCard() {
                   onChange={(e) => api.updateLink(l.id, { url: e.target.value })}
                 />
               </div>
-              <ConfirmButton
-                label="Remove"
-                message={`Remove "${l.label}" from Team Links?`}
-                onConfirm={() => api.removeLink(l.id)}
-              />
+              <div className="row gap2">
+                <button className="btn btn-ghost btn-sm iconbtn" disabled={i === 0} title="Move up" aria-label="Move up" onClick={() => api.moveLink(l.id, "up")}>↑</button>
+                <button className="btn btn-ghost btn-sm iconbtn" disabled={i === links.length - 1} title="Move down" aria-label="Move down" onClick={() => api.moveLink(l.id, "down")}>↓</button>
+                <ConfirmButton
+                  label="Remove"
+                  message={`Remove "${l.label}" from Team Links?`}
+                  onConfirm={() => {
+                    const snapshot = state;
+                    api.removeLink(l.id);
+                    showUndoToast(`"${l.label}" removed from Team Links`, snapshot);
+                  }}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -5679,6 +5736,30 @@ function MatPlan() {
     if (typeof window !== "undefined" && window.scrollTo) window.scrollTo(0, 0);
   }, []);
 
+  // A brief "Removed — Undo" toast after a delete. showUndoToast takes a
+  // snapshot of state from just before the delete; Undo restores that whole
+  // snapshot rather than re-inserting the one record, so it's correct
+  // regardless of which delete it's covering (a practice's cascading
+  // weigh-in-sheet unlink included) at the cost of also reverting any other
+  // edit made in the few seconds the toast is up — an acceptable trade for
+  // a lightweight, universal undo.
+  const [undo, setUndo] = useState(null);
+  const undoTimer = useRef(null);
+  const showUndoToast = React.useCallback((message, snapshot) => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo({ message, snapshot });
+    undoTimer.current = setTimeout(() => setUndo(null), 7000);
+  }, []);
+  const undoLast = React.useCallback(() => {
+    setUndo((cur) => {
+      if (cur) {
+        if (undoTimer.current) clearTimeout(undoTimer.current);
+        update(() => cur.snapshot);
+      }
+      return null;
+    });
+  }, [update]);
+
   if (!loaded || !state) {
     return (
       <div className="mp">
@@ -5697,7 +5778,7 @@ function MatPlan() {
   };
 
   return (
-    <AppCtx.Provider value={{ state, api, view, go }}>
+    <AppCtx.Provider value={{ state, api, view, go, showUndoToast }}>
       <div className="mp" style={rootStyle} onFocus={selectOnFocus}>
         <style>{CSS}</style>
         <div className="wrap">
@@ -5705,6 +5786,12 @@ function MatPlan() {
           <TabNav />
           <Screen />
         </div>
+        {undo && (
+          <div className="undo-toast no-print" role="status">
+            <span>{undo.message}</span>
+            <button className="btn btn-g btn-sm" onClick={undoLast}>Undo</button>
+          </div>
+        )}
       </div>
     </AppCtx.Provider>
   );
