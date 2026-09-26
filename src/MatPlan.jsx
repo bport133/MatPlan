@@ -329,7 +329,7 @@ const CSS = `
   .mp .dash-grid { height: 99vh; overflow: hidden; display: flex; flex-direction: column; }
   .mp .cal-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .mp .cal-card .pad { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .mp .cal-card .pad > .cal-grid:last-child { flex: 1; min-height: 0; grid-auto-rows: 1fr; }
+  .mp .cal-card .pad > .cal-grid-days { flex: 1; min-height: 0; grid-auto-rows: 1fr; }
   .mp .cal-card .cal-cell { aspect-ratio: auto; height: 100%; min-height: 0; }
   .print-footer {
     display: block; text-align: center; font-size: 10px; color: #888;
@@ -2696,7 +2696,7 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
             <div key={w} className="muted tiny upper" style={{ textAlign: "center" }}>{w}</div>
           ))}
         </div>
-        <div className="cal-grid">
+        <div className="cal-grid cal-grid-days">
           {days.map((d) => {
             const key = dateKey(d);
             return (
