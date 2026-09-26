@@ -5439,7 +5439,14 @@ function CompetitionsSummaryPage() {
   const dualRows = [];
   for (const c of competitions) {
     if (c.type !== "DUAL") continue;
-    for (const d of c.duals || []) {
+    // A DUAL competition starts with an empty duals[] until a coach opens it
+    // and hits "+ Add Dual" — still a real, scheduled event, so it gets a
+    // placeholder row rather than silently vanishing from the rollup.
+    if (!c.duals || c.duals.length === 0) {
+      dualRows.push({ id: c.id, competitionId: c.id, date: c.date, opponent: c.name || "Dual Meet", score: null, outcome: null, pending: true });
+      continue;
+    }
+    for (const d of c.duals) {
       dualRows.push({
         id: d.id,
         competitionId: c.id,
@@ -5488,7 +5495,11 @@ function CompetitionsSummaryPage() {
               </span>
               <span className="row gap2 wrapf">
                 {r.score && <span className="muted xs">{r.score}</span>}
-                {r.outcome ? <Pill label={r.outcome.label} tone={r.outcome.tone} /> : <span className="muted xs">No score yet</span>}
+                {r.outcome ? (
+                  <Pill label={r.outcome.label} tone={r.outcome.tone} />
+                ) : (
+                  <span className="muted xs">{r.pending ? "Scheduled — no duals added yet" : "No score yet"}</span>
+                )}
               </span>
             </div>
           ))}
