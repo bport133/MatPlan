@@ -2975,7 +2975,7 @@ function CalendarDay({ dateStr, dayNum, inMonth, isToday, selected, entry, onAdd
             onClick={() => onSelect("practice", p.id)}
             onDoubleClick={() => go("dashboard", "practiceday", p.id)}
           >
-            {teamLabel && teamLabel(p.teamId) ? `${teamLabel(p.teamId)} ` : ""}Practice #{p.practiceNumber || "—"}
+            {teamLabel && teamLabel(p.teamId) ? <>{teamLabel(p.teamId)}<br />Practice #{p.practiceNumber || "—"}</> : `Practice #${p.practiceNumber || "—"}`}
           </button>
           <DeletePracticeButton practiceId={p.id} label="✕" />
         </div>
