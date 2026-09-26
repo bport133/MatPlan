@@ -391,26 +391,38 @@ const OUTCOME_TONE = {
   PLANNED: "slate", DONE: "emerald", MODIFIED: "amber", SKIPPED: "red", ADDED: "blue",
 };
 
-// Every team gets its own ordered weight-class list (see team.weightClasses,
-// backfilled with this on migration) since different squads — a youth Cup
-// team vs. a scholastic Elite team — weigh in against different brackets.
+// Weight classes are named, reusable sets (state.weightClassSets) — a
+// league's bracket list, e.g. "GRYWL Rookie" or "NYWAY" — not something
+// baked into one team. A team just points at whichever set is its usual
+// default; a Weigh-In Sheet snapshots its own resolved list at creation
+// (see buildWeighInSheet) so it can be swapped to a different set, or
+// hand-edited into a one-off list, per event without disturbing anyone
+// else's sheets or the team's default.
 const DEFAULT_WEIGHT_CLASSES = ["50", "55", "60", "65", "70", "75", "80", "85", "90", "95", "100", "110", "125", "Hwt"];
 
-function teamWeightClasses(team) {
-  return Array.isArray(team && team.weightClasses) && team.weightClasses.length ? team.weightClasses : DEFAULT_WEIGHT_CLASSES;
+function findWeightClassSet(state, setId) {
+  return (state.weightClassSets || []).find((w) => w.id === setId) || null;
 }
 
-/** The classes a weigh-in sheet (or a multi-team wrestler) should offer —
- *  the union of its team(s)' lists, in team order, deduplicated. Empty
- *  `teamIds` means "every team", same convention as onRosterOfAny. */
-function weightClassesForTeams(teams, teamIds) {
-  const ids = teamIds && teamIds.length ? teamIds : teams.map((t) => t.id);
+/** A team's default set of classes — its assigned set if one resolves,
+ *  else the built-in fallback (covers a team with no set assigned yet). */
+function teamWeightClasses(state, team) {
+  const set = team && findWeightClassSet(state, team.weightClassSetId);
+  return set ? set.classes : DEFAULT_WEIGHT_CLASSES;
+}
+
+/** The classes a Squad dropdown (or a new sheet, before it gets its own
+ *  copy) should default to — the union of its team(s)' default sets, in
+ *  team order, deduplicated. Empty `teamIds` means "every team", same
+ *  convention as onRosterOfAny. */
+function weightClassesForTeams(state, teamIds) {
+  const ids = teamIds && teamIds.length ? teamIds : state.teams.map((t) => t.id);
   const seen = new Set();
   const out = [];
   for (const id of ids) {
-    const t = teams.find((x) => x.id === id);
+    const t = state.teams.find((x) => x.id === id);
     if (!t) continue;
-    for (const wc of teamWeightClasses(t)) {
+    for (const wc of teamWeightClasses(state, t)) {
       if (!seen.has(wc)) {
         seen.add(wc);
         out.push(wc);
@@ -483,8 +495,8 @@ const GENERAL = "General";
  */
 
 const SYLLABUS_SEED = [
-  // ===================== WARM-UP =====================
-  ["Warm-Up", "Warm-Up", "Movement Warm-Up", ["Jog", "Shuffle Inside", "Shuffle Outside", "Skip"], { s: "WARM_UP" }],
+  // ===================== WARM UP / INDY DRILLS =====================
+  ["Warm Up / Indy Drills", "Warm Up / Indy Drills", "Movement Warm-Up", ["Jog", "Shuffle Inside", "Shuffle Outside", "Skip"], { s: "WARM_UP" }],
   // ===================== NEUTRAL POSITION =====================
   ["Neutral Position", "Neutral - Offense", "Leg Attack Knee Placement", ["*Break the Baseline*", "Single Leg: Knee Hits Outside by Pinky Toe", "Double Leg: Knee Hits Between Feet", "High Crotch: Knee Hits Between Feet by Big Toe"], { s: "INSTRUCTION" }],
   ["Neutral Position", "Neutral - Offense", "Times to Attack", ["Feel Pressure", "Change in Tie", "Change in Level"], { s: "INSTRUCTION" }],
@@ -1593,13 +1605,41 @@ function migrateTeamColors(saved) {
   };
 }
 
-/** Gives every team its own editable weight-class list, for saves made
- * before weight classes were per-team (they all shared one hardcoded set). */
-function migrateTeamWeightClasses(saved) {
-  if (!saved.teams || saved.teams.every((t) => Array.isArray(t.weightClasses))) return saved;
+/** Turns weight classes into named, reusable sets (state.weightClassSets)
+ * that any team can default to and any Weigh-In Sheet can pick — instead
+ * of one list baked into a team, which couldn't tell a GRYWL bracket from
+ * a NYWAY one. Covers two prior shapes: the very first release (one
+ * hardcoded list shared by everyone) and the short-lived per-team
+ * `team.weightClasses` array — either way, each distinct list becomes its
+ * own named set (named after the team it came from) and the team points
+ * at it via `weightClassSetId`. */
+function migrateWeightClassSets(saved) {
+  if (!saved.teams || saved.teams.every((t) => t.weightClassSetId !== undefined)) return saved;
+  const sets = Array.isArray(saved.weightClassSets) ? [...saved.weightClassSets] : [];
+  const teams = saved.teams.map((t) => {
+    if (t.weightClassSetId !== undefined) return t;
+    if (Array.isArray(t.weightClasses) && t.weightClasses.length) {
+      const setId = uid();
+      sets.push({ id: setId, name: t.name, classes: t.weightClasses });
+      const { weightClasses, ...rest } = t;
+      return { ...rest, weightClassSetId: setId };
+    }
+    return { ...t, weightClassSetId: null };
+  });
+  return { ...saved, teams, weightClassSets: sets };
+}
+
+/** Gives every existing Weigh-In Sheet its own resolved class list — sheets
+ * used to derive theirs live from their team(s) every render, which meant
+ * editing a team's default retroactively reshuffled every past sheet.
+ * Snapshotting one now, same as a newly created sheet does. */
+function migrateWeighInSheetWeightClasses(saved) {
+  if (!saved.weighInSheets || saved.weighInSheets.every((sh) => Array.isArray(sh.weightClasses))) return saved;
   return {
     ...saved,
-    teams: saved.teams.map((t) => (Array.isArray(t.weightClasses) ? t : { ...t, weightClasses: [...DEFAULT_WEIGHT_CLASSES] })),
+    weighInSheets: saved.weighInSheets.map((sh) =>
+      Array.isArray(sh.weightClasses) ? sh : { ...sh, weightClasses: weightClassesForTeams(saved, sheetTeamIds(sh)) }
+    ),
   };
 }
 
@@ -1692,6 +1732,32 @@ function migrateNumbering(saved) {
   };
 }
 
+/** Renames the "Warm-Up" Position/Situation label to "Warm Up / Indy
+ * Drills" wherever it's already in use. Deliberately its own narrow pass,
+ * not a SYLLABUS_REVISION bump — that reconciliation rebuilds every seed
+ * item matched by name from the current seed, which would also blow away
+ * any custom edits a coach made to some other item's cues/why/errors just
+ * because its name still matches a seed name. This only ever touches the
+ * one string. */
+function migrateWarmUpLabel(saved) {
+  const OLD = "Warm-Up";
+  const NEW = "Warm Up / Indy Drills";
+  const rename = (v) => (v === OLD ? NEW : v);
+  const order = saved.categoryOrder || {};
+  const needsSyllabus = (saved.syllabus || []).some((i) => i.position === OLD || i.situation === OLD);
+  const needsOrder = (order.POSITION || []).includes(OLD) || (order.SITUATION || []).includes(OLD);
+  if (!needsSyllabus && !needsOrder) return saved;
+  return {
+    ...saved,
+    syllabus: needsSyllabus
+      ? saved.syllabus.map((i) => (i.position === OLD || i.situation === OLD ? { ...i, position: rename(i.position), situation: rename(i.situation) } : i))
+      : saved.syllabus,
+    categoryOrder: needsOrder
+      ? { ...order, POSITION: (order.POSITION || []).map(rename), SITUATION: (order.SITUATION || []).map(rename) }
+      : order,
+  };
+}
+
 function migrateSyllabus(saved) {
   if (saved.syllabusRevision === SYLLABUS_REVISION) return saved;
 
@@ -1754,11 +1820,12 @@ function seedState() {
         cues: (cues || []).map((text, j) => ({ id: uid(), order: j, text })),
       };
     }),
-    teams: [{ id: uid(), name: "Varsity", order: 0, color: TEAM_COLORS[0] }],
+    teams: [{ id: uid(), name: "Varsity", order: 0, color: TEAM_COLORS[0], weightClassSetId: null }],
     practices: [],
     wrestlers: [],
     competitions: [],
     weighInSheets: [],
+    weightClassSets: [],
     history,
     categoryOrder: { POSITION: [], SITUATION: [], STRUCTURE: [] },
     links: [],
@@ -1772,11 +1839,15 @@ const useApp = () => React.useContext(AppCtx);
 
 function runMigrations(saved) {
   return migrateCompetitionWeighIns(
-    migrateEmptyCues(
-      migrateLinks(
-        migrateWrestlerWeight(
-          migrateTeamWeightClasses(
-            migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))))
+    migrateWeighInSheetWeightClasses(
+      migrateEmptyCues(
+        migrateLinks(
+          migrateWrestlerWeight(
+            migrateWeightClassSets(
+              migrateWarmUpLabel(
+                migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))))
+              )
+            )
           )
         )
       )
@@ -1950,6 +2021,12 @@ function buildWeighInSheet(s, input) {
     homeTeam: clean(input.homeTeam),
     visitorTeam: clean(input.visitorTeam),
     teamIds,
+    // Snapshotted once here, from the team(s)' default set, rather than
+    // derived live from the team every render — so swapping a sheet to a
+    // different league's set, or hand-editing it into a one-off list,
+    // only ever affects this one sheet, and a team's default changing
+    // later never reshuffles a sheet that already exists.
+    weightClasses: Array.isArray(input.weightClasses) ? input.weightClasses : weightClassesForTeams(s, teamIds),
     competitionId: input.competitionId || null,
     practiceId: input.practiceId || null,
     archivedAt: null, createdAt: new Date().toISOString(),
@@ -2093,12 +2170,33 @@ function makeApi(update) {
         ...s,
         teams: [
           ...s.teams,
-          { id, name: name.trim() || "New Team", order: s.teams.length, color: TEAM_COLORS[s.teams.length % TEAM_COLORS.length] },
+          {
+            id, name: name.trim() || "New Team", order: s.teams.length,
+            color: TEAM_COLORS[s.teams.length % TEAM_COLORS.length], weightClassSetId: null,
+          },
         ],
       }));
       return id;
     },
     updateTeam: (id, data) => patchIn("teams", id, data),
+
+    /* ---- weight class sets ---- */
+    createWeightClassSet(name, classes) {
+      const id = uid();
+      update((s) => ({
+        ...s,
+        weightClassSets: [...(s.weightClassSets || []), { id, name: name.trim() || "New Set", classes }],
+      }));
+      return id;
+    },
+    updateWeightClassSet: (id, data) => patchIn("weightClassSets", id, data),
+    deleteWeightClassSet(id) {
+      // Nothing points at a set by anything but its id — a team or sheet
+      // left referencing a deleted one just falls back to
+      // DEFAULT_WEIGHT_CLASSES (see teamWeightClasses/findWeightClassSet),
+      // same as an unset one, rather than needing a reassignment step here.
+      removeFrom("weightClassSets", id);
+    },
 
     /* ---- quick links ---- */
     createLink(input) {
@@ -2584,6 +2682,11 @@ function makeApi(update) {
     },
     updateWeighInTeams(sid, teamIds) {
       patchIn("weighInSheets", sid, { teamIds });
+    },
+    /** Swaps this one sheet to a different saved set or a hand-typed
+     * one-off list — never touches the team's default or any other sheet. */
+    updateWeighInWeightClasses(sid, classes) {
+      patchIn("weighInSheets", sid, { weightClasses: classes });
     },
     populateFromRoster(sid) {
       update((s) => {
@@ -3481,6 +3584,54 @@ function TeamIdsCheckboxes({ value, onChange }) {
           {t.name}
         </label>
       ))}
+    </div>
+  );
+}
+
+function sameClasses(a, b) {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/** A weigh-in sheet's own class list — picked from the shared "Weight
+ * Class Sets" library (Customize Appearance) or hand-typed as a one-off
+ * just for this sheet. Never edits the library or a team's default;
+ * `onChange` only ever updates the one sheet this picker is bound to. */
+function WeightClassesPicker({ value, onChange }) {
+  const { state } = useApp();
+  const sets = state.weightClassSets || [];
+  const matched = sets.find((s) => sameClasses(s.classes, value));
+  const [forceCustom, setForceCustom] = useState(false);
+  const [customText, setCustomText] = useState(value.join(", "));
+  const showCustom = forceCustom || !matched;
+
+  return (
+    <div className="grid" style={{ gap: 6 }}>
+      <select
+        className="inp"
+        value={showCustom ? "__custom__" : matched.id}
+        onChange={(e) => {
+          if (e.target.value === "__custom__") {
+            setForceCustom(true);
+            setCustomText(value.join(", "));
+            return;
+          }
+          setForceCustom(false);
+          const set = sets.find((s) => s.id === e.target.value);
+          if (set) onChange(set.classes);
+        }}
+      >
+        {sets.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        <option value="__custom__">Custom for this sheet…</option>
+      </select>
+      {showCustom && (
+        <input
+          className="inp"
+          placeholder="Comma-separated classes, lightest to heaviest"
+          value={customText}
+          onChange={(e) => setCustomText(e.target.value)}
+          onBlur={() => onChange(customText.split(",").map((s) => s.trim()).filter(Boolean))}
+        />
+      )}
     </div>
   );
 }
@@ -5081,7 +5232,7 @@ function RosterPage() {
   const [teamFilter, setTeamFilter] = useState(null);
   const [newTeamId, setNewTeamId] = useState((state.teams[0] || {}).id || null);
   const addTeamId = teamFilter || newTeamId;
-  const addTeamClasses = teamWeightClasses(state.teams.find((t) => t.id === addTeamId));
+  const addTeamClasses = teamWeightClasses(state, state.teams.find((t) => t.id === addTeamId));
 
   const shown = [...state.wrestlers]
     .filter((w) => onRosterOf(w, teamFilter))
@@ -5174,7 +5325,7 @@ function WrestlerRow({ wrestler, showTeam }) {
   const [weightClass, setWeightClass] = useState(wrestler.weightClass || "");
   const [level, setLevel] = useState(wrestler.level != null ? String(wrestler.level) : "");
   const [active, setActive] = useState(wrestler.active);
-  const classOptions = weightClassesForTeams(state.teams, teamsOf(wrestler));
+  const classOptions = weightClassesForTeams(state, teamsOf(wrestler));
 
   return (
     <div>
@@ -5267,8 +5418,17 @@ function WeighInListPage() {
   const [homeTeam, setHomeTeam] = useState("");
   const [visitorTeam, setVisitorTeam] = useState("");
   const [teamIds, setTeamIds] = useState([]);
+  const [weightClasses, setWeightClasses] = useState(() => weightClassesForTeams(state, []));
+  // Tracks whether the coach has picked a set/typed a custom list by hand —
+  // once they have, changing the team checkboxes should stop overwriting it.
+  const classesTouched = useRef(false);
 
-  const active = state.weighInSheets.filter((s) => !s.archivedAt).sort((a, b) => b.date.localeCompare(a.date));
+  function changeTeamIds(next) {
+    setTeamIds(next);
+    if (!classesTouched.current) setWeightClasses(weightClassesForTeams(state, next));
+  }
+
+  const active = state.weighInSheets.filter((s) => !s.archivedAt).sort((a, b) => a.date.localeCompare(b.date));
   const archived = state.weighInSheets.filter((s) => s.archivedAt).sort((a, b) => b.date.localeCompare(a.date));
 
   return (
@@ -5283,15 +5443,21 @@ function WeighInListPage() {
             <input className="inp" style={{ maxWidth: 160 }} placeholder="Visitor team" value={visitorTeam} onChange={(e) => setVisitorTeam(e.target.value)} />
             <button
               className="btn btn-g btn-sm"
-              onClick={() => go("weighin", "detail", api.createWeighInSheet({ date, event, homeTeam, visitorTeam, teamIds }))}
+              onClick={() => go("weighin", "detail", api.createWeighInSheet({ date, event, homeTeam, visitorTeam, teamIds, weightClasses }))}
             >
               + New Weigh-In
             </button>
           </div>
           <div className="row gap2 wrapf">
             <span className="muted xs">Pull roster from:</span>
-            <TeamIdsCheckboxes value={teamIds} onChange={setTeamIds} />
+            <TeamIdsCheckboxes value={teamIds} onChange={changeTeamIds} />
             {teamIds.length === 0 && <span className="muted xs">(none checked = every team)</span>}
+          </div>
+          <div className="row gap2 wrapf" style={{ alignItems: "flex-start" }}>
+            <span className="muted xs" style={{ marginTop: 8 }}>Weight classes:</span>
+            <div style={{ maxWidth: 280 }}>
+              <WeightClassesPicker value={weightClasses} onChange={(next) => { classesTouched.current = true; setWeightClasses(next); }} />
+            </div>
           </div>
         </div>
       </div>
@@ -5354,7 +5520,12 @@ function WeighInSheetForm({ sheetId }) {
   const teamIds = sheetTeamIds(sheet);
   const rosterTeamsLabel = teamIds.length ? teamIds.map((id) => teamName(id)).filter(Boolean).join(", ") : "All Teams";
   const rosterNames = state.wrestlers.filter((w) => w.active).sort((a, b) => a.order - b.order);
-  const classes = weightClassesForTeams(state.teams, teamIds);
+  // This sheet's own snapshot (see buildWeighInSheet) — not re-derived from
+  // its team(s) — so switching it to a different league's set, or hand-
+  // editing it, is this sheet's alone and stays put even if the team's
+  // default changes later.
+  const classes = Array.isArray(sheet.weightClasses) ? sheet.weightClasses : weightClassesForTeams(state, teamIds);
+  const matchedSet = (state.weightClassSets || []).find((s) => sameClasses(s.classes, classes));
   const midpoint = Math.ceil(classes.length / 2);
   const columns = [classes.slice(0, midpoint), classes.slice(midpoint)];
 
@@ -5404,6 +5575,7 @@ function WeighInSheetForm({ sheetId }) {
                 <span className="b" style={{ fontSize: 17 }}>{fmtLong(sheet.date)}</span>
                 <Pill label={editable ? "Upcoming Weigh-Ins" : "Past Weigh-Ins"} tone={editable ? "slate" : "emerald"} icon={editable ? <ClockIcon /> : <CheckIcon />} />
                 <Pill label={`Roster: ${rosterTeamsLabel}`} tone="slate" />
+                <Pill label={`Classes: ${matchedSet ? matchedSet.name : "Custom"}`} tone="slate" />
               </div>
               <p className="muted xs" style={{ marginTop: 4 }}>{sheetSubtitle(sheet) || "No event details yet"}</p>
             </div>
@@ -5442,6 +5614,9 @@ function WeighInSheetForm({ sheetId }) {
             <Field label="Roster from" style={{ gridColumn: "1 / -1" }}>
               <TeamIdsCheckboxes value={teamIds} onChange={(next) => api.updateWeighInTeams(sheet.id, next)} />
               <span className="muted xs">None checked pulls from every team.</span>
+            </Field>
+            <Field label="Weight Classes" style={{ gridColumn: "1 / -1" }}>
+              <WeightClassesPicker value={classes} onChange={(next) => api.updateWeighInWeightClasses(sheet.id, next)} />
             </Field>
             <div className="row gap2">
               <button className="btn btn-g btn-sm" onClick={() => setEditingHeader(false)}>Done</button>
@@ -5833,6 +6008,7 @@ function SettingsPage() {
       </div>
 
       <TeamsCard />
+      <WeightClassSetsCard />
 
       <QuickLinksCard />
 
@@ -6190,21 +6366,21 @@ function TeamBaseline({ team }) {
  * scholastic Elite roster don't share one. Edited as a single comma list
  * rather than one row per class, matching this app's other free-text
  * editors and keeping reordering (lightest to heaviest) a plain retype. */
+/** A team's *default* weight-class set — used for its Squad roster's
+ * Weight Class dropdown and as the starting point for a new Weigh-In
+ * Sheet. The set itself lives in the shared library (WeightClassSetsCard,
+ * below) so more than one team can share it, and any sheet can switch to
+ * a different one — or a one-off custom list — without touching this. */
 function TeamWeightClasses({ team }) {
-  const { api } = useApp();
+  const { state, api } = useApp();
+  const sets = state.weightClassSets || [];
+  const currentSet = sets.find((s) => s.id === team.weightClassSetId);
   const [open, setOpen] = useState(false);
-  const classes = teamWeightClasses(team);
-  const [text, setText] = useState(classes.join(", "));
-
-  function save() {
-    const parsed = text.split(",").map((s) => s.trim()).filter(Boolean);
-    api.updateTeam(team.id, { weightClasses: parsed.length ? parsed : DEFAULT_WEIGHT_CLASSES });
-  }
 
   if (!open) {
     return (
       <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>
-        Weight Classes ({classes.length})
+        Default Classes: {currentSet ? currentSet.name : "Unassigned"}
       </button>
     );
   }
@@ -6212,15 +6388,101 @@ function TeamWeightClasses({ team }) {
   return (
     <div className="ib pad" style={{ width: "100%", marginTop: 8 }}>
       <div className="row between wrapf gap2" style={{ marginBottom: 8 }}>
-        <span className="sb xs">{team.name} weight classes</span>
+        <span className="sb xs">{team.name} default weight classes</span>
         <button className="btn btn-ghost btn-sm iconbtn" onClick={() => setOpen(false)}>Done</button>
       </div>
-      <Field label="Classes, lightest to heaviest (comma-separated)">
-        <input className="inp" style={{ width: "100%" }} value={text} onChange={(e) => setText(e.target.value)} onBlur={save} />
+      <Field label="Default set">
+        <select
+          className="inp"
+          value={team.weightClassSetId || ""}
+          onChange={(e) => api.updateTeam(team.id, { weightClassSetId: e.target.value || null })}
+        >
+          <option value="">Unassigned ({DEFAULT_WEIGHT_CLASSES.length}-class fallback)</option>
+          {sets.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.classes.length})</option>)}
+        </select>
       </Field>
       <p className="muted xs" style={{ marginTop: 8 }}>
-        Groups this team's Weigh-In Sheets and fills the Weight Class options on its Squad roster.
+        Fills the Weight Class options on this team's Squad roster and starts off a new Weigh-In Sheet — any sheet
+        can still be switched to a different set, or a custom one-off list, from its own page. Manage the sets
+        themselves below, under Weight Class Sets.
       </p>
+    </div>
+  );
+}
+
+/** The shared library of named weight-class sets — one league might use
+ * different brackets than another (GRYWL vs. NYWAY), so a set is reusable
+ * across teams rather than baked into one, and a Weigh-In Sheet can pick
+ * any of them (or a hand-typed list) regardless of which team it's for. */
+function WeightClassSetsCard() {
+  const { state, api } = useApp();
+  const sets = [...(state.weightClassSets || [])];
+  const [newName, setNewName] = useState("");
+
+  function add() {
+    if (!newName.trim()) return;
+    api.createWeightClassSet(newName, [...DEFAULT_WEIGHT_CLASSES]);
+    setNewName("");
+  }
+
+  return (
+    <div className="card">
+      <div className="hdr">
+        <h2 className="sb" style={{ fontSize: 15 }}>Weight Class Sets</h2>
+      </div>
+      <div className="divide">
+        {sets.map((s) => <WeightClassSetRow key={s.id} set={s} />)}
+        {sets.length === 0 && (
+          <div className="pad muted xs">No sets yet — add one below, or assign a team's Default Classes to create one.</div>
+        )}
+      </div>
+      <div className="pad row gap2 wrapf">
+        <input
+          className="inp" style={{ maxWidth: 240 }} placeholder="Set name (e.g. GRYWL Rookie, NYWAY)"
+          value={newName} onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+        />
+        <button className="btn btn-g btn-sm" onClick={add}>+ Add Set</button>
+      </div>
+      <p className="muted xs pad" style={{ paddingTop: 0 }}>
+        Assign a set as a team's default under Teams, above, or pick one directly on any Weigh-In Sheet.
+      </p>
+    </div>
+  );
+}
+
+function WeightClassSetRow({ set }) {
+  const { state, api } = useApp();
+  const [name, setName] = useState(set.name);
+  const [text, setText] = useState(set.classes.join(", "));
+  const usedByTeams = state.teams.filter((t) => t.weightClassSetId === set.id);
+
+  function saveClasses() {
+    const parsed = text.split(",").map((s) => s.trim()).filter(Boolean);
+    api.updateWeightClassSet(set.id, { classes: parsed.length ? parsed : DEFAULT_WEIGHT_CLASSES });
+  }
+
+  return (
+    <div className="pad row gap2 wrapf" style={{ alignItems: "flex-start" }}>
+      <input
+        className="inp" style={{ maxWidth: 200 }} value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => api.updateWeightClassSet(set.id, { name })}
+      />
+      <input
+        className="inp" style={{ flex: 1, minWidth: 240 }} placeholder="Comma-separated classes, lightest to heaviest"
+        value={text} onChange={(e) => setText(e.target.value)} onBlur={saveClasses}
+      />
+      <ConfirmButton
+        label="Delete"
+        confirmLabel="Delete"
+        message={
+          usedByTeams.length
+            ? `${usedByTeams.map((t) => t.name).join(", ")} default${usedByTeams.length === 1 ? "s" : ""} to this set — they'll fall back to the built-in list. Delete anyway?`
+            : "Delete this weight class set?"
+        }
+        onConfirm={() => api.deleteWeightClassSet(set.id)}
+      />
     </div>
   );
 }
