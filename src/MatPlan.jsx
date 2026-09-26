@@ -3111,16 +3111,19 @@ function GlobalSearch() {
   };
 
   const results = useMemo(() => {
-    if (!query) return { wrestlers: [], practices: [], competitions: [], history: [] };
+    if (!query) return { wrestlers: [], practices: [], competitions: [], teamEvents: [], weighIns: [], history: [] };
     return {
       wrestlers: state.wrestlers.filter((w) => w.name.toLowerCase().includes(query)).slice(0, 6),
       practices: state.practices.filter((p) => `${teamName(p.teamId)} practice ${p.practiceNumber || ""}`.toLowerCase().includes(query)).slice(0, 6),
       competitions: state.competitions.filter((c) => (c.name || "").toLowerCase().includes(query)).slice(0, 6),
+      teamEvents: state.teamEvents.filter((e) => (e.name || "").toLowerCase().includes(query)).slice(0, 6),
+      weighIns: state.weighInSheets.filter((s) => (s.event || "").toLowerCase().includes(query)).slice(0, 6),
       history: state.history.filter((r) => (r.name || "").toLowerCase().includes(query)).slice(0, 6),
     };
-  }, [query, state.wrestlers, state.practices, state.competitions, state.history, teamName]);
+  }, [query, state.wrestlers, state.practices, state.competitions, state.teamEvents, state.weighInSheets, state.history, teamName]);
 
-  const hasResults = results.wrestlers.length || results.practices.length || results.competitions.length || results.history.length;
+  const hasResults = results.wrestlers.length || results.practices.length || results.competitions.length
+    || results.teamEvents.length || results.weighIns.length || results.history.length;
 
   function pick(tab, sub, id) {
     go(tab, sub, id);
@@ -3135,7 +3138,7 @@ function GlobalSearch() {
         <div>
           <div className="search-group-label">Squad</div>
           {results.wrestlers.map((w) => (
-            <button key={w.id} className="search-result" onClick={() => pick("roster")}>{w.name}</button>
+            <button key={w.id} className="search-result" onClick={() => pick("roster", undefined, w.id)}>{w.name}</button>
           ))}
         </div>
       )}
@@ -3154,6 +3157,24 @@ function GlobalSearch() {
           <div className="search-group-label">Competitions</div>
           {results.competitions.map((c) => (
             <button key={c.id} className="search-result" onClick={() => pick("dashboard", "competition", c.id)}>{c.name}</button>
+          ))}
+        </div>
+      )}
+      {results.teamEvents.length > 0 && (
+        <div>
+          <div className="search-group-label">Team Events</div>
+          {results.teamEvents.map((e) => (
+            <button key={e.id} className="search-result" onClick={() => pick("dashboard")}>
+              {teamName(e.teamId) ? `${teamName(e.teamId)} · ` : ""}{e.name || "Team Event"}
+            </button>
+          ))}
+        </div>
+      )}
+      {results.weighIns.length > 0 && (
+        <div>
+          <div className="search-group-label">Weigh-In Sheets</div>
+          {results.weighIns.map((s) => (
+            <button key={s.id} className="search-result" onClick={() => pick("weighin", "detail", s.id)}>{s.event || "Weigh-In"}</button>
           ))}
         </div>
       )}
@@ -6081,7 +6102,7 @@ function OrganizeCategoryList({ field, title, labels, initialValues }) {
 
 /* ============================== ROSTER ============================== */
 
-function RosterPage() {
+function RosterPage({ highlightId }) {
   const { state, api } = useApp();
   const teamName = useTeamName();
   const [name, setName] = useState("");
@@ -6092,6 +6113,19 @@ function RosterPage() {
   const [newTeamId, setNewTeamId] = useState((state.teams[0] || {}).id || null);
   const addTeamId = teamFilter || newTeamId;
   const addTeamClasses = teamWeightClasses(state, state.teams.find((t) => t.id === addTeamId));
+
+  // A Global Search jump lands here with a wrestler id — clear any team
+  // filter that would hide them, then scroll their row into view.
+  useEffect(() => {
+    if (!highlightId) return;
+    const w = state.wrestlers.find((x) => x.id === highlightId);
+    if (w && teamFilter && !onRosterOf(w, teamFilter)) setTeamFilter(null);
+  }, [highlightId]);
+  useEffect(() => {
+    if (!highlightId) return;
+    const el = document.getElementById(`wrestler-row-${highlightId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightId, teamFilter]);
 
   const shown = [...state.wrestlers]
     .filter((w) => onRosterOf(w, teamFilter))
@@ -6150,7 +6184,7 @@ function RosterPage() {
       </div>
 
       <div className="card divide">
-        {shown.map((w) => <WrestlerRow key={w.id} wrestler={w} showTeam={!teamFilter} />)}
+        {shown.map((w) => <WrestlerRow key={w.id} wrestler={w} showTeam={!teamFilter} highlighted={w.id === highlightId} />)}
         {shown.length === 0 && (
           <div className="pad muted xs">
             {state.wrestlers.length === 0 ? "No wrestlers yet — add one below." : "No wrestlers on this team yet."}
@@ -6176,7 +6210,7 @@ function RosterPage() {
   );
 }
 
-function WrestlerRow({ wrestler, showTeam }) {
+function WrestlerRow({ wrestler, showTeam, highlighted }) {
   const { state, api, showUndoToast } = useApp();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(wrestler.name);
@@ -6188,7 +6222,7 @@ function WrestlerRow({ wrestler, showTeam }) {
 
   return (
     <div>
-      <div className="pad wrow">
+      <div id={`wrestler-row-${wrestler.id}`} className="pad wrow" style={highlighted ? { outline: "2px solid var(--accent)", outlineOffset: -2 } : undefined}>
         <span className="sb xs">{wrestler.name}</span>
         <div className="row gap2 wrapf">
           {showTeam && teamsOf(wrestler).map((id) => {
@@ -6956,7 +6990,7 @@ function UserGuidePage() {
         <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }}>
           <li><b>Autosave, no Save button.</b> Every field saves on blur (click away) or on change — there's no explicit Save/Cancel step to remember, and no risk of losing an edit by navigating away mid-form.</li>
           <li><b>Undo toast.</b> A destructive action (deleting a wrestler, a dual, a weigh-in sheet, a team event) shows a brief "Undo" toast that restores the exact prior state — use it instead of manually re-entering anything if you delete the wrong thing.</li>
-          <li><b>Global Search</b> (top nav) searches wrestlers, practices, competitions, and history records at once and jumps straight to the match — faster than drilling down through tabs when you know a name.</li>
+          <li><b>Global Search</b> (top nav) searches wrestlers, practices, competitions, team events, weigh-in sheets, and history records at once and jumps straight to the match — a wrestler result scrolls to and highlights their row on Squad (clearing any team filter in the way); practices, competitions, and weigh-in sheets open their own page; team events and history jump to Command Center or Hall of Fame. Faster than drilling down through tabs when you know a name.</li>
           <li><b>Multi-coach sync.</b> When signed in, MatPlan's data lives in one shared record that updates live for every signed-in coach — changes made on one device appear on another within about a second, no manual refresh or export/import needed. Invite additional coaches from the sign-in area.</li>
           <li><b>Print / Save as PDF</b> is available on Practice Plans, Weigh-In Sheets, and the Playbook — formatted to fit the page for a physical copy at the mat.</li>
           <li><b>CSV import/export</b> on Squad and Playbook round-trips through spreadsheet software for bulk edits or club-registration imports.</li>
@@ -7606,7 +7640,7 @@ function Screen() {
       if (view.sub === "archive") return <ArchivePage />;
       return <PracticeListPage />;
     case "roster":
-      return <RosterPage />;
+      return <RosterPage highlightId={view.id} />;
     case "weighin":
       return view.sub === "detail" ? <WeighInSheetForm key={view.id} sheetId={view.id} /> : <WeighInListPage />;
     case "competitions":

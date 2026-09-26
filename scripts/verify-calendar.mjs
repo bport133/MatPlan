@@ -58,6 +58,13 @@ function seedState(monthAnchorDate) {
       { id: "c2", teamId: TEAM_ID, date: monthAnchorDate(6), name: "Fright Night Duals", type: "DUAL", weighIns: [] },
       { id: "c3", teamId: TEAM_ID, date: monthAnchorDate(6), name: "Fright Night Individual Tournament", type: "DUAL", weighIns: [] },
     ],
+    // A Team Event uses the same .cal-evt/.pill CSS as a practice or
+    // competition chip — stacked onto the same already-crowded day as the
+    // three competitions above, and with a long name, so it exercises the
+    // same overflow/print checks this script exists to catch.
+    teamEvents: [
+      { id: "e1", teamId: TEAM_ID, date: monthAnchorDate(6), name: "Parents Meeting & Fundraiser Kickoff", startTime: "", location: null, address: null, notes: null },
+    ],
     weighInSheets: [],
     history: [],
     categoryOrder: { POSITION: [], SITUATION: [], STRUCTURE: [] },

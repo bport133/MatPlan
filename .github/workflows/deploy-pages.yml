@@ -16,7 +16,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Guards against the calendar overflow/print regressions this script's own
+  # history is full of (see scripts/verify-calendar.mjs) — builds and checks
+  # the app itself, separately from the "build" job's own build below, so a
+  # broken calendar blocks the deploy rather than just failing silently
+  # whenever someone remembers to run it locally.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:calendar
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
