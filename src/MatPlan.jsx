@@ -331,7 +331,7 @@ const CSS = `
 
 const CATEGORIES = ["WARM_UP", "INSTRUCTION", "DRILL", "LIVE", "BREAK", "GAME"];
 const CATEGORY_LABEL = {
-  WARM_UP: "Warm Up", INSTRUCTION: "Instruction", DRILL: "Drill",
+  WARM_UP: "Warm Up", INSTRUCTION: "Teach", DRILL: "Drill",
   LIVE: "Live", BREAK: "Break", GAME: "Game",
 };
 const CATEGORY_TONE = {
@@ -2408,12 +2408,12 @@ function AppHeader({ logoDataUrl }) {
 }
 
 const TABS = [
-  { tab: "dashboard", label: "Dashboard" },
-  { tab: "syllabus", label: "Syllabus" },
+  { tab: "dashboard", label: "Command Center" },
+  { tab: "syllabus", label: "Playbook" },
   { tab: "practice", label: "Practice Plans" },
-  { tab: "roster", label: "Roster" },
+  { tab: "roster", label: "Squad" },
   { tab: "weighin", label: "Weigh-In" },
-  { tab: "history", label: "History" },
+  { tab: "history", label: "Hall of Fame" },
 ];
 
 function TabNav() {
@@ -2704,7 +2704,7 @@ function EventPreview({ kind, id, onClose, go }) {
         <div className="row gap2 wrapf">
           <span className="pill" style={eventPillStyle(teamColor(team), kind)}>{teamName(row.teamId) || "—"}</span>
           <span className="sb">{title}</span>
-          {practice && (practice.reconciledAt ? <Pill label="Reconciled" tone="emerald" /> : <Pill label="Plan in progress" tone="slate" />)}
+          {practice && (practice.reconciledAt ? <Pill label="Locked In" tone="emerald" /> : <Pill label="Building the Plan" tone="slate" />)}
           {competition && <Pill label={competition.type === "DUAL" ? "Dual Meet" : "Tournament"} tone="slate" />}
         </div>
         <button className="btn btn-ghost btn-sm iconbtn" onClick={onClose}>Close</button>
@@ -2975,7 +2975,7 @@ function PracticeListPage() {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Upcoming / Unreconciled</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>On Deck</h2></div>
         <div className="divide">
           {upcoming.map((p) => (
             <div key={p.id} className="row">
@@ -2994,7 +2994,7 @@ function PracticeListPage() {
 
       <div className="card">
         <div className="hdr">
-          <h2 className="sb" style={{ fontSize: 15 }}>Recently Reconciled</h2>
+          <h2 className="sb" style={{ fontSize: 15 }}>Complete</h2>
           <button className="link xs" onClick={() => go("practice", "archive")}>View full archive →</button>
         </div>
         <div className="divide">
@@ -3002,7 +3002,7 @@ function PracticeListPage() {
             <div key={p.id} className="row">
               <div className="pad row between click" style={{ flex: 1 }} onClick={() => go("practice", "detail", p.id)}>
                 <span className="sb">{fmtFull(p.date)}<span className="muted xs"> · {label(p)}</span></span>
-                <Pill label="Reconciled" tone="emerald" />
+                <Pill label="Locked In" tone="emerald" />
               </div>
               <div className="pad" style={{ paddingLeft: 0 }}>
                 <DeletePracticeButton practiceId={p.id} label="Delete" />
@@ -3026,7 +3026,7 @@ function DeletePracticeButton({ practiceId, label = "Delete Draft", onDeleted })
       message="Delete this plan?"
       onConfirm={() => {
         if (practice && practice.reconciledAt) {
-          return "Reconciled practices can't be deleted — reopen it for editing first.";
+          return "Locked In practices can't be deleted — reopen it for editing first.";
         }
         api.deletePractice(practiceId);
         if (onDeleted) onDeleted();
@@ -3117,7 +3117,7 @@ function ArchivePage() {
         <div className="pad row gap2 wrapf">
           <Field label="From"><input type="date" className="inp" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
           <Field label="To"><input type="date" className="inp" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
-          <Field label="Syllabus Concept/Skill" style={{ flex: 1, minWidth: 200 }}>
+          <Field label="Playbook Concept/Skill" style={{ flex: 1, minWidth: 200 }}>
             <input className="inp" placeholder="Category name" value={q} onChange={(e) => setQ(e.target.value)} />
           </Field>
           <button className="btn btn-g btn-sm" style={{ alignSelf: "flex-end" }} onClick={() => setFilters({ from, to, q })}>Filter</button>
@@ -3244,7 +3244,7 @@ function RichTextEditor({ value, onChange, onBlur }) {
   );
 }
 
-function SyllabusPicker({ options, onSelect, placeholder = "Search the syllabus…" }) {
+function SyllabusPicker({ options, onSelect, placeholder = "Search the playbook…" }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -3260,7 +3260,7 @@ function SyllabusPicker({ options, onSelect, placeholder = "Search the syllabus�
   }, [options, query]);
 
   if (!open) {
-    return <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>+ Concept/Skill from Syllabus</button>;
+    return <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>+ Concept/Skill from Playbook</button>;
   }
 
   return (
@@ -3343,7 +3343,7 @@ function PracticeDayPage({ practiceId }) {
     return (
       <div className="card pad">
         <p className="sb">That practice is gone.</p>
-        <button className="link xs" onClick={() => go("dashboard")}>← Back to dashboard</button>
+        <button className="link xs" onClick={() => go("dashboard")}>← Back to Command Center</button>
       </div>
     );
   }
@@ -3358,9 +3358,9 @@ function PracticeDayPage({ practiceId }) {
         <div className="row between wrapf">
           <div>
             <div className="row gap2 wrapf">
-              <button className="link xs" onClick={() => go("dashboard")}>← Dashboard</button>
+              <button className="link xs" onClick={() => go("dashboard")}>← Command Center</button>
               <span className="b" style={{ fontSize: 17 }}>Practice{practice.practiceNumber ? ` #${practice.practiceNumber}` : ""}</span>
-              {practice.reconciledAt ? <Pill label="Reconciled" tone="emerald" /> : <Pill label="Plan in progress" tone="slate" />}
+              {practice.reconciledAt ? <Pill label="Locked In" tone="emerald" /> : <Pill label="Building the Plan" tone="slate" />}
             </div>
             <p className="muted xs" style={{ marginTop: 4 }}>
               {[
@@ -3561,7 +3561,7 @@ function PracticeEditor({ practiceId }) {
           <div className="row gap2 wrapf">
             <button className="link xs" onClick={() => go("practice")}>← Plans</button>
             <span className="b" style={{ fontSize: 17 }}>{fmtLong(practice.date)}</span>
-            {practice.reconciledAt ? <Pill label="Reconciled" tone="emerald" /> : <Pill label="Plan in progress" tone="slate" />}
+            {practice.reconciledAt ? <Pill label="Locked In" tone="emerald" /> : <Pill label="Building the Plan" tone="slate" />}
           </div>
           <div className="row gap2 wrapf">
             <button className="btn btn-ghost btn-sm" onClick={exportCsv}>Export CSV</button>
@@ -3675,7 +3675,7 @@ function PracticeEditor({ practiceId }) {
             <SyllabusPicker
               options={leafOptions}
               onSelect={(id) => api.addRowFromSyllabus(practice.id, id)}
-              placeholder="Search the syllabus to add a row…"
+              placeholder="Search the playbook to add a row…"
             />
             {CATEGORIES.map((c) => (
               <button key={c} className="btn btn-ghost btn-sm" onClick={() => api.addRow(practice.id, c)}>
@@ -3838,7 +3838,7 @@ function CompetitionDetail({ competitionId }) {
     return (
       <div className="card pad">
         <p className="sb">That competition is gone.</p>
-        <button className="link xs" onClick={() => go("dashboard")}>← Back to dashboard</button>
+        <button className="link xs" onClick={() => go("dashboard")}>← Back to Command Center</button>
       </div>
     );
   }
@@ -3856,7 +3856,7 @@ function CompetitionDetail({ competitionId }) {
           <div className="row between wrapf">
             <div>
               <div className="row gap2 wrapf">
-                <button className="link xs" onClick={() => go("dashboard")}>← Dashboard</button>
+                <button className="link xs" onClick={() => go("dashboard")}>← Command Center</button>
                 <span className="b" style={{ fontSize: 17 }}>{competition.name}</span>
                 <Pill label={competition.type === "DUAL" ? "Dual Meet" : "Tournament"} tone="orange" />
               </div>
@@ -3953,7 +3953,7 @@ function CompetitionDetail({ competitionId }) {
             <CompetitionWeighInRow key={w.id} competitionId={competition.id} wrestler={w} weighIn={weighInFor(w.id)} />
           ))}
           {active.length === 0 && (
-            <div className="pad muted xs">No active wrestlers on the roster yet — add them on the Roster page.</div>
+            <div className="pad muted xs">No active wrestlers on the squad yet — add them on the Squad page.</div>
           )}
         </div>
       </div>
@@ -4062,10 +4062,10 @@ function SyllabusPage() {
   return (
     <div className="card">
       <div className="hdr">
-        <h1 className="b" style={{ fontSize: 17 }}>Syllabus</h1>
+        <h1 className="b" style={{ fontSize: 17 }}>Playbook</h1>
         <div className="row gap2 wrapf">
           <ImportExport
-            label="Syllabus"
+            label="Playbook"
             onExport={exportCsv}
             onImport={(rows) => api.importSyllabus(rows)}
             columnsHint="Structure, Position, Situation, Name, Cues, Why, Common Errors"
@@ -4466,7 +4466,7 @@ function OrganizeCategoriesPage() {
       <div className="card">
         <div className="hdr">
           <h1 className="b" style={{ fontSize: 17 }}>Organize Categories</h1>
-          <button className="link xs" onClick={() => go("syllabus")}>← Back to Syllabus</button>
+          <button className="link xs" onClick={() => go("syllabus")}>← Back to Playbook</button>
         </div>
         <p className="pad muted xs">
           Values sort A-Z by default. Drag any row to set a custom order — it&apos;s used everywhere Position,
@@ -4576,11 +4576,11 @@ function RosterPage() {
     <div className="grid" style={{ gap: 16 }}>
       <div className="card">
         <div className="hdr">
-          <h1 className="b" style={{ fontSize: 17 }}>Roster</h1>
+          <h1 className="b" style={{ fontSize: 17 }}>Squad</h1>
           <div className="row gap2 wrapf">
             <TeamSelect value={teamFilter} onChange={setTeamFilter} allLabel="All Teams" style={{ maxWidth: 180 }} />
             <ImportExport
-              label="Roster"
+              label="Squad"
               onExport={exportCsv}
               onImport={(rows) => api.importRoster(rows)}
               columnsHint="either Name, Teams, Weight Class, Active — or a club roster export: Team, First, Last, DOB, Gender, Age, Grade, Weight, Parent, Cell, Email, Emergency Contact, Cell, Net, Discount Amount, Discount Name, Refunds, Allergies, List, Insurance, Policy #, Address, City, Zip, State"
@@ -4675,7 +4675,7 @@ function WrestlerRow({ wrestler, showTeam }) {
           <ConfirmButton
             label="Delete"
             confirmLabel="Remove"
-            message="Remove from the roster?"
+            message="Remove from the squad?"
             onConfirm={() => api.deleteWrestler(wrestler.id)}
           />
         </div>
@@ -4721,7 +4721,7 @@ function WeighInListPage() {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Active</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Upcoming Weigh-Ins</h2></div>
         <div className="divide">
           {active.map((s) => (
             <div key={s.id} className="pad row between wrapf click" onClick={() => go("weighin", "detail", s.id)}>
@@ -4737,7 +4737,7 @@ function WeighInListPage() {
       </div>
 
       <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Archived</h2></div>
+        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Past Weigh-Ins</h2></div>
         <div className="divide">
           {archived.map((s) => (
             <div key={s.id} className="pad row between wrapf click" onClick={() => go("weighin", "detail", s.id)}>
@@ -4745,7 +4745,7 @@ function WeighInListPage() {
                 <span className="sb">{fmtFull(s.date)}</span>
                 {sheetSubtitle(s) && <span className="muted xs" style={{ marginLeft: 8 }}>{sheetSubtitle(s)}</span>}
               </div>
-              <Pill label="Archived" tone="emerald" />
+              <Pill label="Past Weigh-Ins" tone="emerald" />
             </div>
           ))}
           {archived.length === 0 && <div className="pad muted xs">Nothing archived yet.</div>}
@@ -4820,7 +4820,7 @@ function WeighInSheetForm({ sheetId }) {
               <div className="row gap2 wrapf">
                 <button className="link xs" onClick={() => go("weighin")}>← Weigh-Ins</button>
                 <span className="b" style={{ fontSize: 17 }}>{fmtLong(sheet.date)}</span>
-                <Pill label={editable ? "Active" : "Archived"} tone={editable ? "slate" : "emerald"} />
+                <Pill label={editable ? "Upcoming Weigh-Ins" : "Past Weigh-Ins"} tone={editable ? "slate" : "emerald"} />
               </div>
               <p className="muted xs" style={{ marginTop: 4 }}>{sheetSubtitle(sheet) || "No event details yet"}</p>
             </div>
@@ -4845,7 +4845,7 @@ function WeighInSheetForm({ sheetId }) {
         )}
 
         <div className="row gap2 wrapf" style={{ marginTop: 12 }}>
-          {editable && <button className="btn btn-ghost btn-sm" onClick={() => api.populateFromRoster(sheet.id)}>Populate from Roster</button>}
+          {editable && <button className="btn btn-ghost btn-sm" onClick={() => api.populateFromRoster(sheet.id)}>Populate from Squad</button>}
           <button className="btn btn-ghost btn-sm" onClick={exportCsv}>Export CSV</button>
           <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>Print / Save as PDF</button>
           {editable ? (
@@ -4958,7 +4958,7 @@ function EntryRow({ sheetId, entry, editable }) {
       </Field>
       <button
         className="btn btn-ghost btn-sm"
-        title={out ? "Put back on the sheet for this event" : "Scratch for this event only — stays on the roster"}
+        title={out ? "Put back on the sheet for this event" : "Scratch for this event only — stays on the squad"}
         onClick={() => api.toggleEntryAvailable(sheetId, entry.id)}
       >
         {out ? "Available" : "Scratch"}
@@ -5008,7 +5008,7 @@ function HistoryPage() {
   return (
     <div className="grid" style={{ gap: 20 }}>
       <div className="card">
-        <div className="hdr"><h1 className="b" style={{ fontSize: 17 }}>History</h1></div>
+        <div className="hdr"><h1 className="b" style={{ fontSize: 17 }}>Hall of Fame</h1></div>
       </div>
       {HISTORY_CATEGORIES.map((category) => {
         const records = state.history
@@ -5309,7 +5309,7 @@ function TeamsCard() {
           label="Renumber Practices by Team"
           className="btn btn-ghost btn-sm"
           confirmLabel="Renumber"
-          message="Renumber each team's practices 1–n by date? Reconciled practices keep their numbers."
+          message="Renumber each team's practices 1–n by date? Locked In practices keep their numbers."
           onConfirm={() => api.renumberAllPractices()}
         />
       </div>
@@ -5337,7 +5337,7 @@ function QuickLinksCard() {
 
   return (
     <div className="card">
-      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Quick Links</h2></div>
+      <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Team Links</h2></div>
       {links.length > 0 && (
         <div className="divide">
           {links.map((l) => (
@@ -5358,7 +5358,7 @@ function QuickLinksCard() {
               </div>
               <ConfirmButton
                 label="Remove"
-                message={`Remove "${l.label}" from Quick Links?`}
+                message={`Remove "${l.label}" from Team Links?`}
                 onConfirm={() => api.removeLink(l.id)}
               />
             </div>
@@ -5386,7 +5386,7 @@ function QuickLinksCard() {
       </div>
       <div className="pad" style={{ paddingTop: 0 }}>
         <p className="muted xs">
-          Shown on the Dashboard for one-click access to resources outside the app — team calendars, rosters on other
+          Shown on the Command Center for one-click access to resources outside the app — team calendars, rosters on other
           sites, handbooks, and the like.
         </p>
       </div>
@@ -5527,7 +5527,7 @@ function TeamBaseline({ team }) {
             label="Overwrite all"
             className="btn btn-o btn-sm"
             confirmLabel="Overwrite"
-            message={`Replace times and venue on all ${open2}? Reconciled practices are skipped.`}
+            message={`Replace times and venue on all ${open2}? Locked In practices are skipped.`}
             onConfirm={() => {
               if (!hasBaseline) return "Set a baseline value first.";
               api.applyTeamBaseline(team.id, false);
