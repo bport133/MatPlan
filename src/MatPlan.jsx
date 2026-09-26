@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { supabase, supabaseEnabled } from "./lib/supabaseClient.js";
 import { useAuth, InviteCoach } from "./Auth.jsx";
 
@@ -250,6 +251,14 @@ const CSS = `
 }
 .qlink-tile:hover { border-color: var(--accent); color: var(--accent); background: var(--raised); }
 .qlink-icon { width: 16px; height: 16px; flex-shrink: 0; border-radius: 3px; }
+
+.search-results {
+  width: 260px; max-height: 360px; overflow-y: auto;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4); z-index: 1000;
+}
+.search-group-label { padding: 6px 10px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.search-result { display: block; width: 100%; text-align: left; padding: 6px 10px; background: none; border: none; color: var(--text); font-size: 13px; cursor: pointer; font-family: inherit; }
+.search-result:hover { background: var(--raised); }
 
 .rte { border: 1px solid var(--line); border-radius: 3px; background: var(--panel2); overflow: hidden; }
 .rte-toolbar { display: flex; gap: 2px; padding: 4px; border-bottom: 1px solid var(--line); background: var(--panel); }
@@ -1370,6 +1379,15 @@ function idealTextOn(hex) {
   return contrastWith("#16181a") >= contrastWith("#f5f5f3") ? "#16181a" : "#f5f5f3";
 }
 
+/** WCAG contrast ratio between two arbitrary colors — used to warn when a
+ *  custom text/background pair in Customize Appearance would be hard to
+ *  read, rather than letting it save silently. */
+function contrastRatio(hexA, hexB) {
+  const lA = relLuminance(hexA) + 0.05;
+  const lB = relLuminance(hexB) + 0.05;
+  return lA > lB ? lA / lB : lB / lA;
+}
+
 /**
  * Team color carries which team; fill carries which kind of event — practices
  * are tinted, competitions solid — so both read at a glance in one pill.
@@ -2105,6 +2123,38 @@ function makeApi(update) {
       });
       return id;
     },
+    /** Clones a practice's rows onto a new date — the same team's next
+     *  number, a blank reconciled/notes state, but the drill structure
+     *  already filled in instead of starting from an empty plan. */
+    duplicatePractice(sourceId, dateStr) {
+      const id = uid();
+      update((s) => {
+        const source = s.practices.find((p) => p.id === sourceId);
+        if (!source) return s;
+        const nums = s.practices.filter((p) => p.teamId === source.teamId).map((p) => p.practiceNumber || 0);
+        const autoNumber = (nums.length ? Math.max(...nums) : 0) + 1;
+        return {
+          ...s,
+          practices: [
+            ...s.practices,
+            {
+              id,
+              date: dateStr,
+              teamId: source.teamId,
+              startTime: source.startTime,
+              endTime: source.endTime,
+              location: source.location,
+              address: source.address,
+              practiceNumber: autoNumber,
+              dayNotes: "",
+              reconciledAt: null,
+              rows: source.rows.map((r) => ({ ...r, id: uid() })),
+            },
+          ],
+        };
+      });
+      return id;
+    },
     deletePractice(id) {
       update((s) => ({
         ...s,
@@ -2315,6 +2365,9 @@ function makeApi(update) {
             location: (input.location || "").trim() || null,
             address: (input.address || "").trim() || null,
             notes: null,
+            teamScore: null,
+            oppScore: null,
+            resultNote: null,
             weighIns: [],
           },
         ],
@@ -2535,6 +2588,7 @@ function TabNav() {
         ))}
       </div>
       <div className="row gap2" style={{ flexShrink: 0, marginRight: 4 }}>
+        <GlobalSearch />
         {user && (
           <button className="btn btn-ghost btn-sm" title={user.email} onClick={signOut}>
             Sign Out
@@ -2544,6 +2598,103 @@ function TabNav() {
           ⚙ Customize
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Jump straight to a wrestler, practice, competition, or Hall of Fame
+ * record by name instead of hunting through the right tab first.
+ */
+function GlobalSearch() {
+  const { state, go } = useApp();
+  const teamName = useTeamName();
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState(null);
+  const inputRef = useRef(null);
+  const query = q.trim().toLowerCase();
+
+  // Portaled to <body> and positioned via getBoundingClientRect rather than
+  // a plain CSS-relative dropdown — the nav bar is a .card, whose corner-
+  // notch clip-path clips any descendant that overflows its own box, which
+  // silently ate both the dropdown's visibility and its clicks.
+  const openDropdown = () => {
+    setOpen(true);
+    if (inputRef.current) {
+      const r = inputRef.current.getBoundingClientRect();
+      setDropdownPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    }
+  };
+
+  const results = useMemo(() => {
+    if (!query) return { wrestlers: [], practices: [], competitions: [], history: [] };
+    return {
+      wrestlers: state.wrestlers.filter((w) => w.name.toLowerCase().includes(query)).slice(0, 6),
+      practices: state.practices.filter((p) => `${teamName(p.teamId)} practice ${p.practiceNumber || ""}`.toLowerCase().includes(query)).slice(0, 6),
+      competitions: state.competitions.filter((c) => (c.name || "").toLowerCase().includes(query)).slice(0, 6),
+      history: state.history.filter((r) => (r.name || "").toLowerCase().includes(query)).slice(0, 6),
+    };
+  }, [query, state.wrestlers, state.practices, state.competitions, state.history, teamName]);
+
+  const hasResults = results.wrestlers.length || results.practices.length || results.competitions.length || results.history.length;
+
+  function pick(tab, sub, id) {
+    go(tab, sub, id);
+    setQ("");
+    setOpen(false);
+  }
+
+  const dropdown = open && query && dropdownPos && (
+    <div className="search-results" style={{ position: "fixed", top: dropdownPos.top, right: dropdownPos.right }}>
+      {!hasResults && <div className="pad muted xs">No matches.</div>}
+      {results.wrestlers.length > 0 && (
+        <div>
+          <div className="search-group-label">Squad</div>
+          {results.wrestlers.map((w) => (
+            <button key={w.id} className="search-result" onClick={() => pick("roster")}>{w.name}</button>
+          ))}
+        </div>
+      )}
+      {results.practices.length > 0 && (
+        <div>
+          <div className="search-group-label">Practice Plans</div>
+          {results.practices.map((p) => (
+            <button key={p.id} className="search-result" onClick={() => pick("practice", "detail", p.id)}>
+              {teamName(p.teamId)} Practice #{p.practiceNumber || "—"}
+            </button>
+          ))}
+        </div>
+      )}
+      {results.competitions.length > 0 && (
+        <div>
+          <div className="search-group-label">Competitions</div>
+          {results.competitions.map((c) => (
+            <button key={c.id} className="search-result" onClick={() => pick("dashboard", "competition", c.id)}>{c.name}</button>
+          ))}
+        </div>
+      )}
+      {results.history.length > 0 && (
+        <div>
+          <div className="search-group-label">Hall of Fame</div>
+          {results.history.map((r) => (
+            <button key={r.id} className="search-result" onClick={() => pick("history")}>{r.name} ({r.weight})</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        className="inp" placeholder="Search…" value={q} style={{ maxWidth: 160 }}
+        onChange={(e) => { setQ(e.target.value); openDropdown(); }}
+        onFocus={openDropdown}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {dropdown && createPortal(dropdown, document.body)}
     </div>
   );
 }
@@ -3625,6 +3776,13 @@ function PracticeEditor({ practiceId }) {
   const [endTime, setEndTime] = useState(practice ? practice.endTime : "");
   const [practiceNumber, setPracticeNumber] = useState(practice && practice.practiceNumber != null ? String(practice.practiceNumber) : "");
   const [dayNotes, setDayNotes] = useState(practice ? practice.dayNotes || "" : "");
+  const [duplicating, setDuplicating] = useState(false);
+  const [dupDate, setDupDate] = useState(() => {
+    if (!practice) return todayStr();
+    const d = parseDateOnly(practice.date);
+    d.setDate(d.getDate() + 7);
+    return dateKey(d);
+  });
 
   if (!practice) {
     return (
@@ -3681,6 +3839,7 @@ function PracticeEditor({ practiceId }) {
             {practice.reconciledAt ? <Pill label="Locked In" tone="emerald" icon={<LockIcon />} /> : <Pill label="Building the Plan" tone="slate" icon={<PencilIcon />} />}
           </div>
           <div className="row gap2 wrapf">
+            <button className="btn btn-ghost btn-sm" onClick={() => setDuplicating((v) => !v)}>Duplicate</button>
             <button className="btn btn-ghost btn-sm" onClick={exportCsv}>Export CSV</button>
             <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>Print / Save as PDF</button>
             {editable ? (
@@ -3699,6 +3858,25 @@ function PracticeEditor({ practiceId }) {
             )}
           </div>
         </div>
+
+        {duplicating && (
+          <div className="row gap2 wrapf" style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--line)" }}>
+            <span className="muted xs">Copy this plan's rows onto a new date:</span>
+            <input type="date" className="inp" style={{ maxWidth: 160 }} value={dupDate} onChange={(e) => setDupDate(e.target.value)} />
+            <button
+              className="btn btn-g btn-sm"
+              disabled={!dupDate}
+              onClick={() => {
+                const newId = api.duplicatePractice(practice.id, dupDate);
+                setDuplicating(false);
+                go("practice", "detail", newId);
+              }}
+            >
+              Duplicate
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setDuplicating(false)}>Cancel</button>
+          </div>
+        )}
 
         <div className="thead" style={{ marginTop: 12 }}>
           <div>
@@ -3940,6 +4118,13 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast }) {
 
 /* ============================== COMPETITION ============================== */
 
+function competitionOutcome(competition) {
+  if (competition.teamScore == null || competition.oppScore == null) return null;
+  if (competition.teamScore > competition.oppScore) return { label: "Win", tone: "emerald" };
+  if (competition.teamScore < competition.oppScore) return { label: "Loss", tone: "red" };
+  return { label: "Tie", tone: "slate" };
+}
+
 function CompetitionDetail({ competitionId }) {
   const { state, api, go } = useApp();
   const teamName = useTeamName();
@@ -3977,6 +4162,12 @@ function CompetitionDetail({ competitionId }) {
                 <button className="link xs" onClick={() => go("dashboard")}>← Command Center</button>
                 <span className="b" style={{ fontSize: 17 }}>{competition.name}</span>
                 <Pill label={competition.type === "DUAL" ? "Dual Meet" : "Tournament"} tone="orange" />
+                {competitionOutcome(competition) && (
+                  <Pill
+                    label={`${competitionOutcome(competition).label} ${competition.teamScore}–${competition.oppScore}`}
+                    tone={competitionOutcome(competition).tone}
+                  />
+                )}
               </div>
               <p className="muted xs" style={{ marginTop: 4 }}>
                 {[
@@ -4004,37 +4195,58 @@ function CompetitionDetail({ competitionId }) {
             <Field label="Team">
               <TeamSelect value={competition.teamId} onChange={(id) => api.updateCompetition(competition.id, { teamId: id })} />
             </Field>
-            <Field label="Event Name"><input className="inp" placeholder="Event name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+            <Field label="Event Name">
+              <input
+                className="inp" placeholder="Event name" value={name}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={() => api.updateCompetition(competition.id, { name })}
+              />
+            </Field>
             <Field label="Event Type">
-              <select className="inp" value={type} onChange={(e) => setType(e.target.value)}>
+              <select
+                className="inp" value={type}
+                onChange={(e) => { setType(e.target.value); api.updateCompetition(competition.id, { type: e.target.value }); }}
+              >
                 <option value="DUAL">Dual Meet</option>
                 <option value="TOURNAMENT">Tournament</option>
               </select>
             </Field>
-            <Field label="Time"><input className="inp" placeholder="Time (9:00 AM)" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></Field>
-            <Field label="Location"><input className="inp" placeholder="Location" value={location} onChange={(e) => setLocation(e.target.value)} /></Field>
-            <Field label="Address"><input className="inp" placeholder="Street address" value={address} onChange={(e) => setAddress(e.target.value)} /></Field>
-            <Field label="Notes"><input className="inp" placeholder="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+            <Field label="Time">
+              <input
+                className="inp" placeholder="Time (9:00 AM)" value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                onBlur={() => api.updateCompetition(competition.id, { startTime })}
+              />
+            </Field>
+            <Field label="Location">
+              <input
+                className="inp" placeholder="Location" value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                onBlur={() => api.updateCompetition(competition.id, { location: location || null })}
+              />
+            </Field>
+            <Field label="Address">
+              <input
+                className="inp" placeholder="Street address" value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                onBlur={() => api.updateCompetition(competition.id, { address: address || null })}
+              />
+            </Field>
+            <Field label="Notes">
+              <input
+                className="inp" placeholder="Notes" value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                onBlur={() => api.updateCompetition(competition.id, { notes: notes || null })}
+              />
+            </Field>
             <div className="row gap2">
-              <button
-                className="btn btn-g btn-sm"
-                onClick={() => {
-                  api.updateCompetition(competition.id, {
-                    name, type, startTime,
-                    location: location || null,
-                    address: address || null,
-                    notes: notes || null,
-                  });
-                  setEditingHeader(false);
-                }}
-              >
-                Save
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setEditingHeader(false)}>Cancel</button>
+              <button className="btn btn-g btn-sm" onClick={() => setEditingHeader(false)}>Done</button>
             </div>
           </div>
         )}
       </div>
+
+      <CompetitionResult competition={competition} />
 
       <div className="card">
         <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Weigh-In Sheet</h2></div>
@@ -4074,6 +4286,46 @@ function CompetitionDetail({ competitionId }) {
             <div className="pad muted xs">No active wrestlers on the squad yet — add them on the Squad page.</div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CompetitionResult({ competition }) {
+  const { api } = useApp();
+  const [teamScore, setTeamScore] = useState(competition.teamScore != null ? String(competition.teamScore) : "");
+  const [oppScore, setOppScore] = useState(competition.oppScore != null ? String(competition.oppScore) : "");
+  const [resultNote, setResultNote] = useState(competition.resultNote || "");
+
+  const outcome = competitionOutcome(competition);
+
+  return (
+    <div className="card">
+      <div className="hdr">
+        <span className="row gap2"><h2 className="sb" style={{ fontSize: 15 }}>Result</h2>{outcome && <Pill label={outcome.label} tone={outcome.tone} />}</span>
+      </div>
+      <div className="pad row gap2 wrapf">
+        <Field label="Your Score">
+          <input
+            className="inp numsm" value={teamScore}
+            onChange={(e) => setTeamScore(e.target.value)}
+            onBlur={() => api.updateCompetition(competition.id, { teamScore: teamScore.trim() ? Number(teamScore) : null })}
+          />
+        </Field>
+        <Field label="Opponent Score">
+          <input
+            className="inp numsm" value={oppScore}
+            onChange={(e) => setOppScore(e.target.value)}
+            onBlur={() => api.updateCompetition(competition.id, { oppScore: oppScore.trim() ? Number(oppScore) : null })}
+          />
+        </Field>
+        <Field label="Result Notes" style={{ flex: 1, minWidth: 200 }}>
+          <input
+            className="inp" placeholder="Placement, standout performances, etc." value={resultNote}
+            onChange={(e) => setResultNote(e.target.value)}
+            onBlur={() => api.updateCompetition(competition.id, { resultNote: resultNote.trim() || null })}
+          />
+        </Field>
       </div>
     </div>
   );
@@ -4765,31 +5017,31 @@ function WrestlerRow({ wrestler, showTeam }) {
 
       {editing && (
         <div className="pad row gap2 wrapf" style={{ paddingTop: 0 }}>
-          <input className="inp" style={{ maxWidth: 200 }} placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} />
+          <input
+            className="inp" style={{ maxWidth: 200 }} placeholder="Wrestler name" value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => api.updateWrestler(wrestler.id, { name })}
+          />
           <TeamCheckboxes wrestler={wrestler} />
-          <input className="inp numsm" placeholder="Weight (lbs)" value={weightClass} onChange={(e) => setWeightClass(e.target.value)} />
-          <select className="inp" style={{ maxWidth: 150 }} value={level} onChange={(e) => setLevel(e.target.value)}>
+          <input
+            className="inp numsm" placeholder="Weight (lbs)" value={weightClass}
+            onChange={(e) => setWeightClass(e.target.value)}
+            onBlur={() => api.updateWrestler(wrestler.id, { weightClass: weightClass ? Number(weightClass) : null })}
+          />
+          <select
+            className="inp" style={{ maxWidth: 150 }} value={level}
+            onChange={(e) => { setLevel(e.target.value); api.updateWrestler(wrestler.id, { level: e.target.value ? Number(e.target.value) : null }); }}
+          >
             <option value="">Level (none)</option>
             {WRESTLER_LEVELS.map((l) => <option key={l} value={l}>{l} - {LEVEL_LABEL[l]}</option>)}
           </select>
           <label className="row gap2 xs">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active
+            <input
+              type="checkbox" checked={active}
+              onChange={(e) => { setActive(e.target.checked); api.updateWrestler(wrestler.id, { active: e.target.checked }); }}
+            /> Active
           </label>
-          <button
-            className="btn btn-g btn-sm"
-            onClick={() => {
-              api.updateWrestler(wrestler.id, {
-                name,
-                weightClass: weightClass ? Number(weightClass) : null,
-                level: level ? Number(level) : null,
-                active,
-              });
-              setEditing(false);
-            }}
-          >
-            Save
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+          <button className="btn btn-g btn-sm" onClick={() => setEditing(false)}>Done</button>
           <ConfirmButton
             label="Delete"
             confirmLabel="Remove"
@@ -4950,18 +5202,36 @@ function WeighInSheetForm({ sheetId }) {
           </div>
         ) : (
           <div className="grid g2">
-            <Field label="Date"><input type="date" className="inp" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-            <Field label="Event"><input className="inp" placeholder="Event name" value={event} onChange={(e) => setEvent(e.target.value)} /></Field>
-            <Field label="Home"><input className="inp" placeholder="Home team" value={homeTeam} onChange={(e) => setHomeTeam(e.target.value)} /></Field>
-            <Field label="Visitor"><input className="inp" placeholder="Visitor team" value={visitorTeam} onChange={(e) => setVisitorTeam(e.target.value)} /></Field>
+            <Field label="Date">
+              <input
+                type="date" className="inp" value={date}
+                onChange={(e) => setDate(e.target.value)}
+                onBlur={() => api.updateWeighInHeader(sheet.id, { date, event, homeTeam, visitorTeam })}
+              />
+            </Field>
+            <Field label="Event">
+              <input
+                className="inp" placeholder="Event name" value={event}
+                onChange={(e) => setEvent(e.target.value)}
+                onBlur={() => api.updateWeighInHeader(sheet.id, { date, event, homeTeam, visitorTeam })}
+              />
+            </Field>
+            <Field label="Home">
+              <input
+                className="inp" placeholder="Home team" value={homeTeam}
+                onChange={(e) => setHomeTeam(e.target.value)}
+                onBlur={() => api.updateWeighInHeader(sheet.id, { date, event, homeTeam, visitorTeam })}
+              />
+            </Field>
+            <Field label="Visitor">
+              <input
+                className="inp" placeholder="Visitor team" value={visitorTeam}
+                onChange={(e) => setVisitorTeam(e.target.value)}
+                onBlur={() => api.updateWeighInHeader(sheet.id, { date, event, homeTeam, visitorTeam })}
+              />
+            </Field>
             <div className="row gap2">
-              <button
-                className="btn btn-g btn-sm"
-                onClick={() => { api.updateWeighInHeader(sheet.id, { date, event, homeTeam, visitorTeam }); setEditingHeader(false); }}
-              >
-                Save
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setEditingHeader(false)}>Cancel</button>
+              <button className="btn btn-g btn-sm" onClick={() => setEditingHeader(false)}>Done</button>
             </div>
           </div>
         )}
@@ -5190,19 +5460,29 @@ function HistoryRow({ record }) {
     );
   }
 
+  const saveField = (field, value) => {
+    if (!weight.trim() || !name.trim()) return; // required fields — skip until both are filled
+    api.updateHistoryRecord(record.id, { weight, name, years: yearsText, [field]: value });
+  };
+
   return (
     <div className="pad row gap2 wrapf">
-      <input className="inp numsm" placeholder="Weight class" value={weight} onChange={(e) => setWeight(e.target.value)} />
-      <input className="inp" style={{ maxWidth: 200 }} placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} />
-      <input className="inp" style={{ flex: 1, minWidth: 160 }} placeholder="Years (comma separated)" value={yearsText} onChange={(e) => setYearsText(e.target.value)} />
-      <button
-        className="btn btn-g btn-sm"
-        disabled={!weight.trim() || !name.trim()}
-        onClick={() => { api.updateHistoryRecord(record.id, { weight, name, years: yearsText }); setEditing(false); }}
-      >
-        Save
-      </button>
-      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+      <input
+        className="inp numsm" placeholder="Weight class" value={weight}
+        onChange={(e) => setWeight(e.target.value)}
+        onBlur={() => saveField("weight", weight)}
+      />
+      <input
+        className="inp" style={{ maxWidth: 200 }} placeholder="Wrestler name" value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => saveField("name", name)}
+      />
+      <input
+        className="inp" style={{ flex: 1, minWidth: 160 }} placeholder="Years (comma separated)" value={yearsText}
+        onChange={(e) => setYearsText(e.target.value)}
+        onBlur={() => saveField("years", yearsText)}
+      />
+      <button className="btn btn-g btn-sm" disabled={!weight.trim() || !name.trim()} onClick={() => setEditing(false)}>Done</button>
       <ConfirmButton
         label="Delete"
         confirmLabel="Remove"
@@ -5316,6 +5596,12 @@ function SettingsPage() {
         >
           Save Changes
         </button>
+        {contrastRatio(text, bg) < 4.5 && (
+          <p className="xs" style={{ color: "var(--tone-amber-color)", flexBasis: "100%" }}>
+            Low contrast between Text Color and Background Color ({contrastRatio(text, bg).toFixed(1)}:1) — text may be
+            hard to read. WCAG recommends at least 4.5:1.
+          </p>
+        )}
         <ConfirmButton
           label="Reset to Defaults"
           className="btn btn-ghost"
