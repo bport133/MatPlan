@@ -1618,6 +1618,29 @@ function migrateWrestlerWeight(saved) {
   };
 }
 
+/** Backfills an auto-drafted Weigh-In Sheet for any competition saved
+ * before createCompetition started drafting one automatically, so an old
+ * competition gets one exactly the way a newly created one now does. */
+function migrateCompetitionWeighIns(saved) {
+  if (!saved.competitions || !saved.competitions.length) return saved;
+  const sheets = Array.isArray(saved.weighInSheets) ? saved.weighInSheets : [];
+  const linked = new Set(sheets.map((sh) => sh.competitionId).filter(Boolean));
+  const missing = saved.competitions.filter((c) => !linked.has(c.id));
+  if (!missing.length) return saved;
+  const teamName = (id) => (saved.teams.find((t) => t.id === id) || {}).name || saved.program.name;
+  const newSheets = missing.map((c) =>
+    buildWeighInSheet(saved, {
+      date: c.date,
+      event: c.name,
+      homeTeam: teamName(c.teamId),
+      visitorTeam: c.type === "DUAL" ? c.name : "",
+      teamId: c.teamId,
+      competitionId: c.id,
+    })
+  );
+  return { ...saved, weighInSheets: [...sheets, ...newSheets] };
+}
+
 /** Backfills `teamIds` for saves made while wrestlers had a single team. */
 function migrateRosterTeams(saved) {
   if (!saved.wrestlers || saved.wrestlers.every((w) => Array.isArray(w.teamIds))) return saved;
@@ -1748,11 +1771,13 @@ const AppCtx = React.createContext(null);
 const useApp = () => React.useContext(AppCtx);
 
 function runMigrations(saved) {
-  return migrateEmptyCues(
-    migrateLinks(
-      migrateWrestlerWeight(
-        migrateTeamWeightClasses(
-          migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))))
+  return migrateCompetitionWeighIns(
+    migrateEmptyCues(
+      migrateLinks(
+        migrateWrestlerWeight(
+          migrateTeamWeightClasses(
+            migrateWrestlerDetails(migrateTeamColors(migrateRosterTeams(migrateNumbering(migrateTeams(migrateSyllabus(saved))))))
+          )
         )
       )
     )
@@ -1799,7 +1824,19 @@ function usePersistentState() {
           next = null; // no saved state yet, or storage unavailable
         }
         if (cancelled) return;
-        setState(next && next.syllabus ? runMigrations(next) : seedState());
+        let migrated = next && next.syllabus ? runMigrations(next) : seedState();
+        // A migration that only backfills a derived field is safe to leave
+        // unsaved until the next real edit — it re-derives the same way
+        // next load. One that invents new persistent records (ids and all,
+        // like migrateCompetitionWeighIns) is not: replaying it on every
+        // load before anything else saves would silently swap in a fresh
+        // sheet each time, discarding whatever got typed into the last
+        // one. Saving right away, once, makes it permanent instead.
+        if (migrated !== next) {
+          dirty.current = true;
+          localVersion.current += 1;
+        }
+        setState(migrated);
         setLoaded(true);
       })();
       return () => { cancelled = true; };
@@ -1825,7 +1862,15 @@ function usePersistentState() {
           .from(APP_STATE_TABLE)
           .upsert({ id: APP_STATE_ROW_ID, data: next, updated_by: user?.email || null });
       } else {
+        const before = next;
         next = runMigrations(next);
+        // See the matching comment in the localStorage branch above — a
+        // migration that creates new persistent records (ids and all) must
+        // be saved right away, not left for the next real edit to flush.
+        if (next !== before) {
+          dirty.current = true;
+          localVersion.current += 1;
+        }
       }
       if (cancelled) return;
       setState(next);
@@ -1889,6 +1934,38 @@ function usePersistentState() {
 
 /* ============================== ACTIONS (formerly server actions) ============================== */
 
+/** Shared by createWeighInSheet, createCompetition (which drafts one
+ * automatically), and migrateCompetitionWeighIns (which backfills one for
+ * any competition saved before that auto-draft existed) — top-level, not
+ * inside makeApi, since the migration runs before an api/update exists. */
+function buildWeighInSheet(s, input) {
+  const clean = (v) => (v && String(v).trim() ? String(v).trim() : null);
+  // No team(s) specified means "every team" (see onRosterOfAny) rather
+  // than silently guessing the first team in the list — a sheet made
+  // from a Practice/Competition still passes its own single teamId.
+  const teamIds = Array.isArray(input.teamIds) ? input.teamIds : input.teamId ? [input.teamId] : [];
+  return {
+    id: uid(), date: input.date,
+    event: clean(input.event),
+    homeTeam: clean(input.homeTeam),
+    visitorTeam: clean(input.visitorTeam),
+    teamIds,
+    competitionId: input.competitionId || null,
+    practiceId: input.practiceId || null,
+    archivedAt: null, createdAt: new Date().toISOString(),
+    // Seeded from the selected team(s)' active roster so a sheet opens
+    // ready to weigh instead of empty. Anyone out for this event is
+    // scratched on the sheet, which never touches the roster itself.
+    entries: input.populate === false ? [] : s.wrestlers
+      .filter((w) => w.active && onRosterOfAny(w, teamIds))
+      .sort((a, b) => a.order - b.order)
+      .map((w, i) => ({
+        id: uid(), weightClass: w.weightClass ?? null, wrestlerId: w.id,
+        name: w.name, weight: null, level: null, available: true, order: i,
+      })),
+  };
+}
+
 function makeApi(update) {
   const patchIn = (key, id, patch) =>
     update((s) => ({ ...s, [key]: s[key].map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
@@ -1898,36 +1975,6 @@ function makeApi(update) {
     update((s) => ({ ...s, practices: s.practices.map((p) => (p.id === pid ? fn(p) : p)) }));
   const patchSheet = (sid, fn) =>
     update((s) => ({ ...s, weighInSheets: s.weighInSheets.map((x) => (x.id === sid ? fn(x) : x)) }));
-  /** Shared by createWeighInSheet and createCompetition (which drafts one
-   * automatically), so a competition's auto-drafted sheet and a manually
-   * created one are built identically. */
-  const buildWeighInSheet = (s, input) => {
-    const clean = (v) => (v && String(v).trim() ? String(v).trim() : null);
-    // No team(s) specified means "every team" (see onRosterOfAny) rather
-    // than silently guessing the first team in the list — a sheet made
-    // from a Practice/Competition still passes its own single teamId.
-    const teamIds = Array.isArray(input.teamIds) ? input.teamIds : input.teamId ? [input.teamId] : [];
-    return {
-      id: uid(), date: input.date,
-      event: clean(input.event),
-      homeTeam: clean(input.homeTeam),
-      visitorTeam: clean(input.visitorTeam),
-      teamIds,
-      competitionId: input.competitionId || null,
-      practiceId: input.practiceId || null,
-      archivedAt: null, createdAt: new Date().toISOString(),
-      // Seeded from the selected team(s)' active roster so a sheet opens
-      // ready to weigh instead of empty. Anyone out for this event is
-      // scratched on the sheet, which never touches the roster itself.
-      entries: input.populate === false ? [] : s.wrestlers
-        .filter((w) => w.active && onRosterOfAny(w, teamIds))
-        .sort((a, b) => a.order - b.order)
-        .map((w, i) => ({
-          id: uid(), weightClass: w.weightClass ?? null, wrestlerId: w.id,
-          name: w.name, weight: null, level: null, available: true, order: i,
-        })),
-    };
-  };
 
   return {
     /* ---- syllabus ---- */
