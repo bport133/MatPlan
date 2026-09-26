@@ -1452,8 +1452,15 @@ function eventPillStyle(color, kind) {
   if (kind === "competition") {
     return { background: c, color: idealTextOn(c), borderColor: c, fontWeight: 700 };
   }
+  if (kind === "event") {
+    return { background: tint(c, 0.18), color: c, borderColor: tint(c, 0.55), borderStyle: "dashed" };
+  }
   return { background: tint(c, 0.18), color: c, borderColor: tint(c, 0.55) };
 }
+
+/** Freeform suggestions offered on the team-event Name field — a datalist,
+ * not a fixed set, so a coach can still type anything else. */
+const TEAM_EVENT_SUGGESTIONS = ["Parents Meeting", "Fundraiser", "Team Gathering", "Team Banquet", "Picture Day", "Senior Night"];
 
 const BASELINE_FIELDS = ["startTime", "endTime", "location", "address"];
 
@@ -1734,6 +1741,14 @@ function migrateTournamentResults(saved) {
   };
 }
 
+/** Backfills the teamEvents collection for saves made before it existed
+ * (Parents Meetings, fundraisers, and the like — calendar entries that
+ * are neither a practice nor a competition). */
+function migrateTeamEvents(saved) {
+  if (Array.isArray(saved.teamEvents)) return saved;
+  return { ...saved, teamEvents: [] };
+}
+
 /** Backfills an auto-drafted Weigh-In Sheet for any competition saved
  * before createCompetition started drafting one automatically, so an old
  * competition gets one exactly the way a newly created one now does. */
@@ -1900,6 +1915,7 @@ function seedState() {
     practices: [],
     wrestlers: [],
     competitions: [],
+    teamEvents: [],
     weighInSheets: [],
     weightClassSets: [],
     history,
@@ -1914,7 +1930,8 @@ const AppCtx = React.createContext(null);
 const useApp = () => React.useContext(AppCtx);
 
 function runMigrations(saved) {
-  return migrateCompetitionWeighIns(
+  return migrateTeamEvents(
+    migrateCompetitionWeighIns(
     migrateWeighInSheetWeightClasses(
       migrateTournamentResults(
         migrateCompetitionDuals(
@@ -1932,7 +1949,7 @@ function runMigrations(saved) {
         )
       )
     )
-  );
+  ));
 }
 
 const APP_STATE_TABLE = "app_state";
@@ -2841,6 +2858,31 @@ function makeApi(update) {
         weighInSheets: s.weighInSheets.map((w) => (w.competitionId === id ? { ...w, competitionId: null } : w)),
       }));
     },
+
+    /* ---- team events (Parents Meetings, fundraisers, team gatherings —
+     * anything on the calendar that's neither a practice nor a competition;
+     * a null teamId means it applies to every team, same "no filter"
+     * convention as onRosterOf) ---- */
+    createTeamEvent(input) {
+      const id = uid();
+      update((s) => ({
+        ...s,
+        teamEvents: [...s.teamEvents, {
+          id,
+          date: input.dateStr,
+          teamId: input.teamId || null,
+          name: (input.name || "").trim(),
+          startTime: (input.startTime || "").trim(),
+          location: (input.location || "").trim() || null,
+          address: (input.address || "").trim() || null,
+          notes: null,
+        }],
+      }));
+      return id;
+    },
+    updateTeamEvent: (id, data) => patchIn("teamEvents", id, data),
+    deleteTeamEvent: (id) => removeFrom("teamEvents", id),
+
     setCompetitionWeighIn(compId, wrestlerId, data) {
       update((s) => ({
         ...s,
@@ -3183,9 +3225,13 @@ function Dashboard() {
   const rangeEndK = weeks[2].endK;
 
   const inRange = (d) => d >= rangeStartK && d <= rangeEndK;
+  // A team event's teamId may be null ("All Teams"), so the team filter
+  // shouldn't hide it the way it would a practice or competition.
+  const onTeamOrAll = (row) => !teamFilter || !row.teamId || row.teamId === teamFilter;
   const events = [
     ...state.practices.filter((p) => onTeam(p) && inRange(p.date)).map((p) => ({ kind: "Practice", date: p.date, id: p.id, teamId: p.teamId, num: p.practiceNumber })),
     ...state.competitions.filter((c) => onTeam(c) && inRange(c.date)).map((c) => ({ kind: "Competition", date: c.date, id: c.id, name: c.name, teamId: c.teamId })),
+    ...state.teamEvents.filter((e) => onTeamOrAll(e) && inRange(e.date)).map((e) => ({ kind: "Event", date: e.date, id: e.id, name: e.name, teamId: e.teamId })),
   ].sort((a, b) => a.date.localeCompare(b.date));
 
   for (const w of weeks) w.events = events.filter((e) => e.date >= w.startK && e.date <= w.endK);
@@ -3213,9 +3259,9 @@ function Dashboard() {
                 {week.events.map((e) => (
                   <div key={`${e.kind}-${e.id}`} className="pad row between gap2">
                     <div
-                      className="row between click"
+                      className={`row between${e.kind === "Event" ? "" : " click"}`}
                       style={{ flex: 1, minWidth: 0 }}
-                      onClick={() => (e.kind === "Practice" ? go("dashboard", "practiceday", e.id) : go("dashboard", "competition", e.id))}
+                      onClick={e.kind === "Event" ? undefined : () => (e.kind === "Practice" ? go("dashboard", "practiceday", e.id) : go("dashboard", "competition", e.id))}
                     >
                       <span
                         className="sb xs"
@@ -3223,15 +3269,17 @@ function Dashboard() {
                       >
                         {fmtDay(e.date)}
                       </span>
-                      <span className="pill" style={eventPillStyle(colorOf(e.teamId), e.kind === "Practice" ? "practice" : "competition")}>
+                      <span className="pill" style={eventPillStyle(colorOf(e.teamId), e.kind === "Practice" ? "practice" : e.kind === "Competition" ? "competition" : "event")}>
                         {teamName(e.teamId) ? `${teamName(e.teamId)} ${e.kind === "Practice" ? "" : "· "}` : ""}
-                        {e.kind === "Practice" ? `Practice${e.num != null ? ` #${e.num}` : ""}` : e.name || "Competition"}
+                        {e.kind === "Practice" ? `Practice${e.num != null ? ` #${e.num}` : ""}` : e.name || (e.kind === "Competition" ? "Competition" : "Team Event")}
                       </span>
                     </div>
                     {e.kind === "Practice" ? (
                       <DeletePracticeButton practiceId={e.id} label="✕" />
-                    ) : (
+                    ) : e.kind === "Competition" ? (
                       <DeleteCompetitionButton competitionId={e.id} label="✕" />
+                    ) : (
+                      <DeleteTeamEventButton eventId={e.id} label="✕" />
                     )}
                   </div>
                 ))}
@@ -3285,10 +3333,13 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
 
   const byDay = new Map();
   const ensure = (k) => {
-    if (!byDay.has(k)) byDay.set(k, { practices: [], competitions: [] });
+    if (!byDay.has(k)) byDay.set(k, { practices: [], competitions: [], events: [] });
     return byDay.get(k);
   };
   const onTeam = (row) => !teamFilter || row.teamId === teamFilter;
+  // A team event's teamId may be null ("All Teams"), so the team filter
+  // shouldn't hide it the way it would a practice or competition.
+  const onTeamOrAll = (row) => !teamFilter || !row.teamId || row.teamId === teamFilter;
   for (const p of state.practices) {
     if (!onTeam(p)) continue;
     ensure(p.date).practices.push({ id: p.id, practiceNumber: p.practiceNumber, teamId: p.teamId });
@@ -3296,6 +3347,10 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
   for (const c of state.competitions) {
     if (!onTeam(c)) continue;
     ensure(c.date).competitions.push({ id: c.id, name: c.name, type: c.type, teamId: c.teamId });
+  }
+  for (const ev of state.teamEvents) {
+    if (!onTeamOrAll(ev)) continue;
+    ensure(ev.date).events.push({ id: ev.id, name: ev.name, teamId: ev.teamId });
   }
 
   const monthLabel = monthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" });
@@ -3326,7 +3381,9 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
       </div>
       <div className="pad">
         {addDay && <DayAddPanel key={addDay} dateStr={addDay} defaultTeamId={teamFilter} onClose={() => setAddDay(null)} go={go} />}
-        {preview && <EventPreview key={preview.id} {...preview} onClose={() => setPreview(null)} go={go} />}
+        {preview && (preview.kind === "event"
+          ? <TeamEventPreview key={preview.id} id={preview.id} onClose={() => setPreview(null)} />
+          : <EventPreview key={preview.id} {...preview} onClose={() => setPreview(null)} go={go} />)}
         <div className="cal-grid" style={{ marginBottom: 4 }}>
           {WEEKDAYS.map((w) => (
             <div key={w} className="muted tiny upper" style={{ textAlign: "center" }}>{w}</div>
@@ -3343,7 +3400,7 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
                 inMonth={d.getMonth() === month - 1}
                 isToday={key === todayK}
                 selected={key === addDay}
-                entry={byDay.get(key) || { practices: [], competitions: [] }}
+                entry={byDay.get(key) || { practices: [], competitions: [], events: [] }}
                 onAdd={() => { setPreview(null); setAddDay((cur) => (cur === key ? null : key)); }}
                 onSelect={(kind, id) => { setAddDay(null); setPreview((cur) => (cur && cur.id === id ? null : { kind, id })); }}
                 previewId={preview && preview.id}
@@ -3429,6 +3486,106 @@ function EventPreview({ kind, id, onClose, go }) {
   );
 }
 
+/**
+ * A team event has no dedicated detail page (there's nothing under it to
+ * plan — no plan, no weigh-ins, no results) so unlike EventPreview this
+ * panel edits inline, in place, rather than linking off to one.
+ */
+function TeamEventPreview({ id, onClose }) {
+  const { state, api } = useApp();
+  const teamName = useTeamName();
+  const event = state.teamEvents.find((e) => e.id === id);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(event ? event.name : "");
+  const [startTime, setStartTime] = useState(event ? event.startTime || "" : "");
+  const [location, setLocation] = useState(event ? event.location || "" : "");
+  const [address, setAddress] = useState(event ? event.address || "" : "");
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    if (panelRef.current) panelRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [id]);
+
+  if (!event) return null;
+  const team = state.teams.find((t) => t.id === event.teamId);
+
+  if (editing) {
+    return (
+      <div ref={panelRef} className="ib pad dayadd" style={{ marginBottom: 12 }}>
+        <div className="row between wrapf gap2" style={{ marginBottom: 10 }}>
+          <span className="sb xs">Edit Event</span>
+          <button className="btn btn-ghost btn-sm iconbtn" onClick={onClose}>Close</button>
+        </div>
+        <div className="grid g4">
+          <Field label="Team">
+            <TeamSelect value={event.teamId} onChange={(teamId) => api.updateTeamEvent(event.id, { teamId })} allLabel="All Teams" />
+          </Field>
+          <Field label="Event Name">
+            <input
+              className="inp" list="team-event-suggestions" value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => name.trim() && api.updateTeamEvent(event.id, { name: name.trim() })}
+            />
+          </Field>
+          <Field label="Date">
+            <input type="date" className="inp" value={event.date} onChange={(e) => api.updateTeamEvent(event.id, { date: e.target.value })} />
+          </Field>
+          <Field label="Time">
+            <input
+              className="inp" placeholder="Time (6:00 PM)" value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              onBlur={() => api.updateTeamEvent(event.id, { startTime })}
+            />
+          </Field>
+          <Field label="Location">
+            <input
+              className="inp" placeholder="Location" value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              onBlur={() => api.updateTeamEvent(event.id, { location: location.trim() || null })}
+            />
+          </Field>
+          <Field label="Address">
+            <input
+              className="inp" placeholder="Street address" value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              onBlur={() => api.updateTeamEvent(event.id, { address: address.trim() || null })}
+            />
+          </Field>
+        </div>
+        <datalist id="team-event-suggestions">{TEAM_EVENT_SUGGESTIONS.map((s) => <option key={s} value={s} />)}</datalist>
+        <div className="row gap2" style={{ marginTop: 10 }}>
+          <button className="btn btn-g btn-sm" disabled={!name.trim()} onClick={() => setEditing(false)}>Done</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={panelRef} className="ib pad dayadd" style={{ marginBottom: 12 }}>
+      <div className="row between wrapf gap2">
+        <div className="row gap2 wrapf">
+          <span className="pill" style={eventPillStyle(teamColor(team), "event")}>{teamName(event.teamId) || "All Teams"}</span>
+          <span className="sb">{event.name || "Team Event"}</span>
+        </div>
+        <button className="btn btn-ghost btn-sm iconbtn" onClick={onClose}>Close</button>
+      </div>
+
+      <div className="grid g4" style={{ marginTop: 10 }}>
+        <Field label="Team"><p className="xs">{teamName(event.teamId) || "All Teams"}</p></Field>
+        <Field label="Date"><p className="xs">{fmtLong(event.date)}</p></Field>
+        <Field label="Time"><p className="xs">{event.startTime || "No time set"}</p></Field>
+        <Field label="Location"><p className="xs">{event.location || <span className="muted">—</span>}</p></Field>
+      </div>
+      {event.address && <p className="muted xs" style={{ marginTop: 6 }}>{event.address}</p>}
+
+      <div className="row gap2 wrapf" style={{ marginTop: 10 }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit</button>
+        <DeleteTeamEventButton eventId={event.id} label="Delete Event" onDeleted={onClose} />
+      </div>
+    </div>
+  );
+}
+
 function DayAddPanel({ dateStr, defaultTeamId, onClose, go }) {
   const { state, api } = useApp();
   const teamName = useTeamName();
@@ -3477,6 +3634,14 @@ function DayAddPanel({ dateStr, defaultTeamId, onClose, go }) {
     setForm((f) => ({ ...f, startTime: "", endTime: "", location: "", address: "" }));
   }
 
+  /** A practice/competition always belongs to one team; a team event can
+   * apply to every team instead, so switching away from "event" needs a
+   * real team selected again. */
+  function switchKind(k) {
+    setKind(k);
+    if (k !== "event" && !form.teamId) setForm((f) => ({ ...f, teamId: firstTeam }));
+  }
+
   /**
    * Scheduling and planning are separate jobs. Adding an event keeps you on the
    * dashboard with the form open so a whole season's schedule can be entered in
@@ -3499,6 +3664,19 @@ function DayAddPanel({ dateStr, defaultTeamId, onClose, go }) {
       return;
     }
     if (!form.name.trim()) return;
+    if (kind === "event") {
+      const id = api.createTeamEvent({
+        dateStr: on,
+        teamId: form.teamId,
+        name: form.name.trim(),
+        startTime: form.startTime,
+        location: form.location,
+        address: form.address,
+      });
+      setJustAdded({ kind: "event", id, date: on, label: form.name.trim() });
+      setForm((f) => ({ ...f, name: "", address: "" }));
+      return;
+    }
     const id = api.createCompetition({
       dateStr: on,
       teamId: form.teamId,
@@ -3522,20 +3700,26 @@ function DayAddPanel({ dateStr, defaultTeamId, onClose, go }) {
       <div className="row between wrapf gap2" style={{ marginBottom: 10 }}>
         <div className="row gap2 wrapf">
           <span className="sb xs">Add to {fmtFull(dateStr)}</span>
-          <button className={`btn btn-sm ${kind === "practice" ? "btn-g" : "btn-ghost"}`} onClick={() => setKind("practice")}>Practice</button>
-          <button className={`btn btn-sm ${kind === "competition" ? "btn-g" : "btn-ghost"}`} onClick={() => setKind("competition")}>Competition</button>
+          <button className={`btn btn-sm ${kind === "practice" ? "btn-g" : "btn-ghost"}`} onClick={() => switchKind("practice")}>Practice</button>
+          <button className={`btn btn-sm ${kind === "competition" ? "btn-g" : "btn-ghost"}`} onClick={() => switchKind("competition")}>Competition</button>
+          <button className={`btn btn-sm ${kind === "event" ? "btn-g" : "btn-ghost"}`} onClick={() => switchKind("event")}>Event</button>
         </div>
         <button className="btn btn-ghost btn-sm iconbtn" onClick={onClose}>{justAdded ? "Done" : "Cancel"}</button>
       </div>
 
       <div className="grid g4">
         <Field label="Team">
-          <TeamSelect value={form.teamId} onChange={changeTeam} />
+          <TeamSelect value={form.teamId} onChange={changeTeam} allLabel={kind === "event" ? "All Teams" : undefined} />
         </Field>
         {kind === "practice" ? (
           <Field label="Practice #"><input className="inp" placeholder="Practice # (auto)" value={form.practiceNumber} onChange={set("practiceNumber")} /></Field>
         ) : (
-          <Field label="Event Name"><input className="inp" placeholder="Event name" value={form.name} onChange={set("name")} /></Field>
+          <Field label="Event Name">
+            <input
+              className="inp" list={kind === "event" ? "team-event-suggestions" : undefined}
+              placeholder="Event name" value={form.name} onChange={set("name")}
+            />
+          </Field>
         )}
         {kind === "competition" && (
           <Field label="Event Type">
@@ -3544,6 +3728,9 @@ function DayAddPanel({ dateStr, defaultTeamId, onClose, go }) {
               <option value="TOURNAMENT">Tournament</option>
             </select>
           </Field>
+        )}
+        {kind === "event" && (
+          <datalist id="team-event-suggestions">{TEAM_EVENT_SUGGESTIONS.map((s) => <option key={s} value={s} />)}</datalist>
         )}
         <Field label="Date"><input type="date" className="inp" value={form.date} onChange={set("date")} /></Field>
         <Field label={kind === "practice" ? "Start Time" : "Time"}>
@@ -3560,13 +3747,18 @@ function DayAddPanel({ dateStr, defaultTeamId, onClose, go }) {
 
       {justAdded && (
         <p className="xs" style={{ marginTop: 8, color: "var(--tone-emerald-color)" }}>
-          Added {justAdded.label} on {fmtFull(justAdded.date)}.{" "}
-          <button
-            className="link xs"
-            onClick={() => go("dashboard", justAdded.kind === "practice" ? "practiceday" : "competition", justAdded.id)}
-          >
-            Open it
-          </button>
+          Added {justAdded.label} on {fmtFull(justAdded.date)}.
+          {justAdded.kind !== "event" && (
+            <>
+              {" "}
+              <button
+                className="link xs"
+                onClick={() => go("dashboard", justAdded.kind === "practice" ? "practiceday" : "competition", justAdded.id)}
+              >
+                Open it
+              </button>
+            </>
+          )}
         </p>
       )}
 
@@ -3582,8 +3774,8 @@ function DayAddPanel({ dateStr, defaultTeamId, onClose, go }) {
       )}
 
       <div className="row gap2" style={{ marginTop: 10 }}>
-        <button className="btn btn-g btn-sm" disabled={kind === "competition" && !form.name.trim()} onClick={submit}>
-          {kind === "practice" ? "Add Practice" : "Add Competition"}
+        <button className="btn btn-g btn-sm" disabled={kind !== "practice" && !form.name.trim()} onClick={submit}>
+          {kind === "practice" ? "Add Practice" : kind === "competition" ? "Add Competition" : "Add Event"}
         </button>
       </div>
     </div>
@@ -3621,6 +3813,19 @@ function CalendarDay({ dateStr, dayNum, inMonth, isToday, selected, entry, onAdd
             {teamLabel && teamLabel(c.teamId) ? `${teamLabel(c.teamId)} · ` : ""}{c.name}
           </button>
           <DeleteCompetitionButton competitionId={c.id} label="✕" />
+        </div>
+      ))}
+      {entry.events.map((ev) => (
+        <div key={ev.id} className="cal-evt">
+          <button
+            className="pill"
+            title="Click for details"
+            style={{ ...eventPillStyle(colorOf(ev.teamId), "event"), outline: previewId === ev.id ? "2px solid var(--accent)" : undefined }}
+            onClick={() => onSelect("event", ev.id)}
+          >
+            {teamLabel && teamLabel(ev.teamId) ? `${teamLabel(ev.teamId)} · ` : ""}{ev.name || "Team Event"}
+          </button>
+          <DeleteTeamEventButton eventId={ev.id} label="✕" />
         </div>
       ))}
 
@@ -3854,6 +4059,26 @@ function DeleteCompetitionButton({ competitionId, label = "Delete", onDeleted })
         const snapshot = state;
         api.deleteCompetition(competitionId);
         showUndoToast("Competition removed", snapshot);
+        if (onDeleted) onDeleted();
+      }}
+    />
+  );
+}
+
+function DeleteTeamEventButton({ eventId, label = "Delete", onDeleted }) {
+  const { state, api, showUndoToast } = useApp();
+  const bare = label === "✕";
+
+  return (
+    <ConfirmButton
+      label={label}
+      title={bare ? "Delete event" : undefined}
+      ariaLabel={bare ? "Delete event" : undefined}
+      message="Delete this event?"
+      onConfirm={() => {
+        const snapshot = state;
+        api.deleteTeamEvent(eventId);
+        showUndoToast("Event removed", snapshot);
         if (onDeleted) onDeleted();
       }}
     />
