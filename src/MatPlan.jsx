@@ -3045,6 +3045,10 @@ function AppHeader({ logoDataUrl }) {
   );
 }
 
+/** Linked from the nav bar, not routed through `go` — it's a Claude Docs
+ * page, not a screen inside this app. */
+const USER_GUIDE_URL = "https://claude.ai/code/artifact/9969aeeb-0954-45da-9769-1ff0c63dcc98";
+
 const TABS = [
   { tab: "dashboard", label: "Command Center" },
   { tab: "syllabus", label: "Playbook" },
@@ -3074,6 +3078,9 @@ function TabNav() {
             Sign Out
           </button>
         )}
+        <a className="btn btn-ghost btn-sm" href={USER_GUIDE_URL} target="_blank" rel="noopener noreferrer" title="Open the User Guide">
+          📖 User Guide
+        </a>
         <button className="btn btn-ghost btn-sm" title="Customize appearance" onClick={() => go("settings")}>
           ⚙ Customize
         </button>
