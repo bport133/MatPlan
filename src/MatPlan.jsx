@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase, supabaseEnabled } from "./lib/supabaseClient.js";
 import { useAuth, InviteCoach } from "./Auth.jsx";
+import matplanLogo from "./assets/matplan-logo.webp";
 
 /* ============================== STYLES (ported from globals.css) ============================== */
 
@@ -3090,16 +3091,8 @@ function AppHeader({ logoDataUrl }) {
           just an even split that reads as under half once the card's own
           padding is counted against the outer width. */}
       <div style={{ flex: "1 1 54%", minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6, lineHeight: 1 }}>
-          <span style={{ fontFamily: "var(--font-brand)", fontSize: 46, letterSpacing: ".03em" }}>
-            <span style={{ color: "var(--text)" }}>MAT</span>
-            <span style={{ color: "var(--accent)" }}>PLAN</span>
-          </span>
-        </div>
-        <p style={{ fontFamily: "var(--font-heading)", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".08em", margin: "4px 0 6px" }}>
-          Plan. Teach. Develop. Win.
-        </p>
-        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 13, margin: 0, lineHeight: 1.3, maxWidth: 420 }}>
+        <img src={matplanLogo} alt="MatPlan — Plan. Teach. Develop. Win." style={{ height: 168, width: "auto", display: "block" }} />
+        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 13, margin: "6px 0 0", lineHeight: 1.3, maxWidth: 420 }}>
           The Complete Wrestling Development System for Building Championship Programs
         </h1>
       </div>
