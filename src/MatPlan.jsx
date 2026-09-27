@@ -3059,53 +3059,32 @@ function makeApi(update) {
 
 /* ============================== SHELL ============================== */
 
+/**
+ * The brand column (MATPLAN wordmark + tagline copy) is capped to the same
+ * width as the wordmark itself and stacked underneath it, rather than
+ * spreading across the header's center — that's what leaves the header's
+ * remaining width free for a much larger team logo on the right.
+ */
+const BRAND_COLUMN_WIDTH = 230;
+
 function AppHeader({ logoDataUrl }) {
   return (
-    <div className="card mb5 no-print" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
-      <div>
+    <div className="card mb5 no-print" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
+      <div style={{ width: BRAND_COLUMN_WIDTH, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, lineHeight: 1 }}>
-          <span style={{ fontFamily: "var(--font-brand)", fontSize: 40, letterSpacing: ".03em" }}>
+          <span style={{ fontFamily: "var(--font-brand)", fontSize: 46, letterSpacing: ".03em" }}>
             <span style={{ color: "var(--text)" }}>MAT</span>
             <span style={{ color: "var(--accent)" }}>PLAN</span>
           </span>
         </div>
-        <p style={{ fontFamily: "var(--font-heading)", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".08em", margin: "4px 0 0" }}>
+        <p style={{ fontFamily: "var(--font-heading)", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".08em", margin: "4px 0 6px" }}>
           Plan. Teach. Develop. Win.
         </p>
-      </div>
-      <div style={{ flex: "1 1 320px", textAlign: "center", margin: "0 16px" }}>
-        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 16, margin: 0, lineHeight: 1.25 }}>
+        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 13, margin: 0, lineHeight: 1.3 }}>
           The Complete Wrestling Development System for Building Championship Programs
         </h1>
-        <p className="muted xs" style={{ margin: "4px 0 0", lineHeight: 1.4 }}>
-          Create structured curriculums, build better practices, track athlete progress, manage weigh-ins, preserve
-          program history, and develop wrestlers through a proven Teach-Drill-Test framework.
-        </p>
       </div>
-      {logoDataUrl && <TeamLogoBadge logoDataUrl={logoDataUrl} />}
-    </div>
-  );
-}
-
-/**
- * A circular medallion for the program's logo — a white backing (so any
- * logo shows clearly regardless of its own background or colors) inside a
- * gold gradient ring, the same --grad-gold token Hall of Fame uses, tying
- * the logo to the app's "championship" visual language rather than the
- * everyday red accent. Sized to break slightly above the header card's top
- * edge, like a crest, instead of sitting flush inside the row.
- */
-function TeamLogoBadge({ logoDataUrl }) {
-  return (
-    <div
-      style={{
-        width: 92, height: 92, flexShrink: 0, marginTop: -20, borderRadius: "50%",
-        background: "var(--grad-gold)", padding: 4, boxShadow: "var(--shadow-lg)",
-      }}
-    >
-      <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "#fff", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <img src={logoDataUrl} alt="Team logo" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 6 }} />
-      </div>
+      {logoDataUrl && <img src={logoDataUrl} alt="Team logo" style={{ height: 150, maxWidth: 520, objectFit: "contain" }} />}
     </div>
   );
 }
