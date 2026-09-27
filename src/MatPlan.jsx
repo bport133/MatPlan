@@ -2428,6 +2428,17 @@ function makeApi(update) {
         if (s.teams.length <= 1) return s;
         const target = fallbackId || s.teams.find((t) => t.id !== id).id;
         const move = (list) => list.map((r) => (r.teamId === id ? { ...r, teamId: target } : r));
+        // A weigh-in sheet holds a *list* of teams (sheetTeamIds), not the
+        // single teamId a practice/competition has, so it needs the deleted
+        // id swapped inside that array rather than a plain field replace —
+        // deduped in case the fallback team is already on the same sheet.
+        const moveSheetTeams = (list) => list.map((r) => {
+          if (Array.isArray(r.teamIds)) {
+            if (!r.teamIds.includes(id)) return r;
+            return { ...r, teamIds: Array.from(new Set(r.teamIds.map((t) => (t === id ? target : t)))) };
+          }
+          return r.teamId === id ? { ...r, teamId: target } : r;
+        });
         // A wrestler on several teams just loses this one; a wrestler who was
         // only on it moves to the fallback so they stay on some roster.
         const wrestlers = s.wrestlers.map((w) => {
@@ -2440,7 +2451,7 @@ function makeApi(update) {
           practices: move(s.practices),
           competitions: move(s.competitions),
           wrestlers,
-          weighInSheets: move(s.weighInSheets),
+          weighInSheets: moveSheetTeams(s.weighInSheets),
         };
       });
     },
