@@ -3082,7 +3082,30 @@ function AppHeader({ logoDataUrl }) {
           program history, and develop wrestlers through a proven Teach-Drill-Test framework.
         </p>
       </div>
-      {logoDataUrl && <img src={logoDataUrl} alt="Team logo" style={{ height: 96, maxWidth: 280, objectFit: "contain" }} />}
+      {logoDataUrl && <TeamLogoBadge logoDataUrl={logoDataUrl} />}
+    </div>
+  );
+}
+
+/**
+ * A circular medallion for the program's logo — a white backing (so any
+ * logo shows clearly regardless of its own background or colors) inside a
+ * gold gradient ring, the same --grad-gold token Hall of Fame uses, tying
+ * the logo to the app's "championship" visual language rather than the
+ * everyday red accent. Sized to break slightly above the header card's top
+ * edge, like a crest, instead of sitting flush inside the row.
+ */
+function TeamLogoBadge({ logoDataUrl }) {
+  return (
+    <div
+      style={{
+        width: 92, height: 92, flexShrink: 0, marginTop: -20, borderRadius: "50%",
+        background: "var(--grad-gold)", padding: 4, boxShadow: "var(--shadow-lg)",
+      }}
+    >
+      <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "#fff", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <img src={logoDataUrl} alt="Team logo" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 6 }} />
+      </div>
     </div>
   );
 }
