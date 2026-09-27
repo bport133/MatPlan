@@ -3059,18 +3059,16 @@ function makeApi(update) {
 
 /* ============================== SHELL ============================== */
 
-/**
- * The brand column (MATPLAN wordmark + tagline copy) is capped to the same
- * width as the wordmark itself and stacked underneath it, rather than
- * spreading across the header's center — that's what leaves the header's
- * remaining width free for a much larger team logo on the right.
- */
-const BRAND_COLUMN_WIDTH = 230;
-
 function AppHeader({ logoDataUrl }) {
   return (
-    <div className="card mb5 no-print" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 20 }}>
-      <div style={{ width: BRAND_COLUMN_WIDTH, flexShrink: 0 }}>
+    <div className="card mb5 no-print" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+      {/* flex-basis 54/46 (only meaningful once there's a second flex item —
+          with no logo this one alone still grows to fill the whole row) —
+          biased slightly toward the brand side so it's unambiguously at
+          least half the header's width, not a narrow fixed column, and not
+          just an even split that reads as under half once the card's own
+          padding is counted against the outer width. */}
+      <div style={{ flex: "1 1 54%", minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, lineHeight: 1 }}>
           <span style={{ fontFamily: "var(--font-brand)", fontSize: 46, letterSpacing: ".03em" }}>
             <span style={{ color: "var(--text)" }}>MAT</span>
@@ -3080,11 +3078,15 @@ function AppHeader({ logoDataUrl }) {
         <p style={{ fontFamily: "var(--font-heading)", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".08em", margin: "4px 0 6px" }}>
           Plan. Teach. Develop. Win.
         </p>
-        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 13, margin: 0, lineHeight: 1.3 }}>
+        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 13, margin: 0, lineHeight: 1.3, maxWidth: 420 }}>
           The Complete Wrestling Development System for Building Championship Programs
         </h1>
       </div>
-      {logoDataUrl && <img src={logoDataUrl} alt="Team logo" style={{ height: 150, maxWidth: 520, objectFit: "contain" }} />}
+      {logoDataUrl && (
+        <div style={{ flex: "1 1 46%", minWidth: 0, display: "flex", justifyContent: "flex-end" }}>
+          <img src={logoDataUrl} alt="Team logo" style={{ height: 150, maxWidth: "100%", objectFit: "contain" }} />
+        </div>
+      )}
     </div>
   );
 }
