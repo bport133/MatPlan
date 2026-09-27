@@ -1200,6 +1200,15 @@ function download(filename, text, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/* Portal target for fixed-position dropdowns (GlobalSearch results,
+   CustomizeMenu). Must stay inside #mp-root rather than document.body —
+   the app's colors are CSS custom properties scoped to .mp, which don't
+   cascade to a portal's sibling subtree, so anything portaled straight to
+   <body> rendered with a transparent background and invisible text. */
+function mpPortalTarget() {
+  return document.getElementById("mp-root") || document.body;
+}
+
 /* ============================== SHARED UI ============================== */
 
 const TONE = {
@@ -3126,7 +3135,6 @@ const TABS = [
 
 function TabNav() {
   const { view, go } = useApp();
-  const { user, signOut } = useAuth();
   return (
     <div className="card mb5 no-print" style={{ padding: 4, marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <div className="tabs">
@@ -3146,18 +3154,59 @@ function TabNav() {
       </div>
       <div className="row gap2" style={{ flexShrink: 0, marginRight: 4 }}>
         <GlobalSearch />
-        {user && (
-          <button className="btn btn-ghost btn-sm" title={user.email} onClick={signOut}>
-            Sign Out
-          </button>
-        )}
-        <button className="btn btn-ghost btn-sm" title="Open the User Guide" onClick={() => go("guide")}>
-          📖 User Guide
-        </button>
-        <button className="btn btn-ghost btn-sm" title="Customize appearance" onClick={() => go("settings")}>
-          ⚙ Customize
-        </button>
+        <CustomizeMenu />
       </div>
+    </div>
+  );
+}
+
+/* User Guide and Sign Out live under Customize instead of as their own
+   top-level nav buttons — one settings-flavored entry point instead of
+   three separate buttons competing for space in the nav bar. Reuses the
+   same portal-to-<body> + fixed-position dropdown as GlobalSearch's
+   results panel, so it isn't at risk of being clipped by any ancestor. */
+function CustomizeMenu() {
+  const { go } = useApp();
+  const { user, signOut } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+
+  function toggle() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    }
+    setOpen((v) => !v);
+  }
+
+  function pick(fn) {
+    fn();
+    setOpen(false);
+  }
+
+  const menu = open && pos && (
+    <div className="search-results" style={{ position: "fixed", top: pos.top, right: pos.right, width: 200 }}>
+      <button className="search-result" onClick={() => pick(() => go("settings"))}>⚙ Customize Appearance</button>
+      <button className="search-result" onClick={() => pick(() => go("guide"))}>📖 User Guide</button>
+      {user && (
+        <button className="search-result" title={user.email} onClick={() => pick(signOut)}>Sign Out</button>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      <button
+        ref={btnRef}
+        className="btn btn-ghost btn-sm"
+        title="Customize appearance, User Guide, Sign Out"
+        onClick={toggle}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      >
+        ⚙ Customize
+      </button>
+      {menu && createPortal(menu, mpPortalTarget())}
     </div>
   );
 }
@@ -3275,7 +3324,7 @@ function GlobalSearch() {
         onFocus={openDropdown}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
-      {dropdown && createPortal(dropdown, document.body)}
+      {dropdown && createPortal(dropdown, mpPortalTarget())}
     </div>
   );
 }
@@ -7802,7 +7851,7 @@ function MatPlan() {
 
   return (
     <AppCtx.Provider value={{ state, api, view, go, showUndoToast }}>
-      <div className="mp" style={rootStyle} onFocus={selectOnFocus}>
+      <div id="mp-root" className="mp" style={rootStyle} onFocus={selectOnFocus}>
         <style>{CSS}</style>
         <div className="wrap">
           <AppHeader logoDataUrl={p.logoDataUrl} />
