@@ -3083,23 +3083,37 @@ function makeApi(update) {
 
 function AppHeader({ logoDataUrl }) {
   return (
-    <div className="card mb5 no-print" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
-      {/* flex-basis 54/46 (only meaningful once there's a second flex item —
-          with no logo this one alone still grows to fill the whole row) —
-          biased slightly toward the brand side so it's unambiguously at
-          least half the header's width, not a narrow fixed column, and not
-          just an even split that reads as under half once the card's own
-          padding is counted against the outer width. */}
-      <div style={{ flex: "1 1 54%", minWidth: 0 }}>
+    <div className="card mb5 no-print" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "center", gap: 24, marginBottom: 20 }}>
+      {/* Content clusters together and centers as one unit rather than
+          pinning the brand block and team-logo tile to opposite edges —
+          on a wide header that reads as a deliberate composition instead
+          of a wordmark trailing off into a large empty gap. */}
+      <div style={{ flex: "0 0 auto" }}>
         <img src={matplanLogo} alt="MatPlan — Plan. Teach. Develop. Win." style={{ height: 168, width: "auto", display: "block" }} />
         <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 13, margin: "6px 0 0", lineHeight: 1.3, maxWidth: 420 }}>
           The Complete Wrestling Development System for Building Championship Programs
         </h1>
       </div>
       {logoDataUrl && (
-        <div style={{ flex: "1 1 46%", minWidth: 0, display: "flex", justifyContent: "flex-end" }}>
-          <img src={logoDataUrl} alt="Team logo" style={{ height: 150, maxWidth: "100%", objectFit: "contain" }} />
-        </div>
+        <>
+          <div style={{ flex: "0 0 auto", width: 1, height: 110, background: "var(--line)" }} />
+          <div
+            style={{
+              flex: "0 0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: 110,
+              padding: "0 16px",
+              background: "var(--panel2)",
+              border: "1px solid var(--line)",
+              borderRadius: "var(--radius-card)",
+              boxShadow: "var(--shadow-sm)",
+            }}
+          >
+            <img src={logoDataUrl} alt="Team logo" style={{ height: "100%", maxWidth: 200, objectFit: "contain" }} />
+          </div>
+        </>
       )}
     </div>
   );
