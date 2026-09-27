@@ -8,7 +8,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase, supabaseEnabled } from "./lib/supabaseClient.js";
 import { useAuth, InviteCoach } from "./Auth.jsx";
-import matplanLogo from "./assets/matplan-logo.webp";
 
 /* ============================== STYLES (ported from globals.css) ============================== */
 
@@ -3083,38 +3082,28 @@ function makeApi(update) {
 
 function AppHeader({ logoDataUrl }) {
   return (
-    <div className="card mb5 no-print" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "center", gap: 24, marginBottom: 20 }}>
-      {/* Content clusters together and centers as one unit rather than
-          pinning the brand block and team-logo tile to opposite edges —
-          on a wide header that reads as a deliberate composition instead
-          of a wordmark trailing off into a large empty gap. */}
-      <div style={{ flex: "0 0 auto" }}>
-        <img src={matplanLogo} alt="MatPlan — Plan. Teach. Develop. Win." style={{ height: 168, width: "auto", display: "block" }} />
-        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 13, margin: "6px 0 0", lineHeight: 1.3, maxWidth: 420 }}>
+    <div className="card mb5 no-print" style={{ padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 20 }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, lineHeight: 1 }}>
+          <span style={{ fontFamily: "var(--font-brand)", fontSize: 40, letterSpacing: ".03em" }}>
+            <span style={{ color: "var(--text)" }}>MAT</span>
+            <span style={{ color: "var(--accent)" }}>PLAN</span>
+          </span>
+        </div>
+        <p style={{ fontFamily: "var(--font-heading)", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".08em", margin: "4px 0 0" }}>
+          Plan. Teach. Develop. Win.
+        </p>
+      </div>
+      <div style={{ flex: "1 1 320px", textAlign: "center", margin: "0 16px" }}>
+        <h1 className="eb" style={{ fontFamily: "var(--font-heading)", fontSize: 16, margin: 0, lineHeight: 1.25 }}>
           The Complete Wrestling Development System for Building Championship Programs
         </h1>
+        <p className="muted xs" style={{ margin: "4px 0 0", lineHeight: 1.4 }}>
+          Create structured curriculums, build better practices, track athlete progress, manage weigh-ins, preserve
+          program history, and develop wrestlers through a proven Teach-Drill-Test framework.
+        </p>
       </div>
-      {logoDataUrl && (
-        <>
-          <div style={{ flex: "0 0 auto", width: 1, height: 110, background: "var(--line)" }} />
-          <div
-            style={{
-              flex: "0 0 auto",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              height: 110,
-              padding: "0 16px",
-              background: "var(--panel2)",
-              border: "1px solid var(--line)",
-              borderRadius: "var(--radius-card)",
-              boxShadow: "var(--shadow-sm)",
-            }}
-          >
-            <img src={logoDataUrl} alt="Team logo" style={{ height: "100%", maxWidth: 200, objectFit: "contain" }} />
-          </div>
-        </>
-      )}
+      {logoDataUrl && <img src={logoDataUrl} alt="Team logo" style={{ height: 96, maxWidth: 220, objectFit: "contain" }} />}
     </div>
   );
 }
