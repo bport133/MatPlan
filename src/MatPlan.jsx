@@ -3955,28 +3955,79 @@ function PracticeListPage() {
   );
 }
 
-function DeletePracticeButton({ practiceId, label = "Delete Draft", onDeleted }) {
+/**
+ * Shared by every "delete this record" button (practice, competition, team
+ * event) — same ConfirmButton + undo-toast shape each time, differing only
+ * in label, confirm message, a pre-delete check, and which api call to run.
+ * `canDelete` returns `true` to proceed, a string to refuse with that error
+ * (shown inline, e.g. a Locked In practice), or `false` to abort silently
+ * (the record is already gone — nothing to tell the coach).
+ */
+const DELETE_RECORD_CONFIG = {
+  practice: {
+    defaultLabel: "Delete Draft",
+    ariaText: "Delete practice",
+    toastMessage: "Practice removed",
+    message: () => "Delete this plan?",
+    canDelete: (state, id) => {
+      const practice = state.practices.find((p) => p.id === id);
+      return practice && practice.reconciledAt
+        ? "Locked In practices can't be deleted — reopen it for editing first."
+        : true;
+    },
+    onDelete: (api, id) => api.deletePractice(id),
+  },
+  competition: {
+    defaultLabel: "Delete",
+    ariaText: "Delete competition",
+    toastMessage: "Competition removed",
+    message: (state, id) => {
+      const competition = state.competitions.find((c) => c.id === id);
+      const recorded = competition ? competition.weighIns.length : 0;
+      return recorded
+        ? `Delete this competition and ${recorded} recorded weigh-in${recorded === 1 ? "" : "s"}?`
+        : "Delete this competition?";
+    },
+    canDelete: (state, id) => Boolean(state.competitions.find((c) => c.id === id)),
+    onDelete: (api, id) => api.deleteCompetition(id),
+  },
+  event: {
+    defaultLabel: "Delete",
+    ariaText: "Delete event",
+    toastMessage: "Event removed",
+    message: () => "Delete this event?",
+    canDelete: () => true,
+    onDelete: (api, id) => api.deleteTeamEvent(id),
+  },
+};
+
+function DeleteRecordButton({ kind, id, label, onDeleted }) {
   const { state, api, showUndoToast } = useApp();
-  const practice = state.practices.find((p) => p.id === practiceId);
-  const bare = label === "✕";
+  const cfg = DELETE_RECORD_CONFIG[kind];
+  const resolvedLabel = label ?? cfg.defaultLabel;
+  const bare = resolvedLabel === "✕";
 
   return (
     <ConfirmButton
-      label={label}
-      title={bare ? "Delete practice" : undefined}
-      ariaLabel={bare ? "Delete practice" : undefined}
-      message="Delete this plan?"
+      label={resolvedLabel}
+      title={bare ? cfg.ariaText : undefined}
+      ariaLabel={bare ? cfg.ariaText : undefined}
+      message={cfg.message(state, id)}
       onConfirm={() => {
-        if (practice && practice.reconciledAt) {
-          return "Locked In practices can't be deleted — reopen it for editing first.";
-        }
+        const verdict = cfg.canDelete(state, id);
+        if (verdict === false) return;
+        if (typeof verdict === "string") return verdict;
         const snapshot = state;
-        api.deletePractice(practiceId);
-        showUndoToast("Practice removed", snapshot);
+        cfg.onDelete(api, id);
+        showUndoToast(cfg.toastMessage, snapshot);
         if (onDeleted) onDeleted();
       }}
     />
   );
+}
+
+function DeletePracticeButton({ practiceId, label, onDeleted }) {
+  return <DeleteRecordButton kind="practice" id={practiceId} label={label} onDeleted={onDeleted} />;
 }
 
 /**
@@ -4075,49 +4126,12 @@ function WeightClassesPicker({ value, onChange }) {
   );
 }
 
-function DeleteCompetitionButton({ competitionId, label = "Delete", onDeleted }) {
-  const { state, api, showUndoToast } = useApp();
-  const competition = state.competitions.find((c) => c.id === competitionId);
-  const recorded = competition ? competition.weighIns.length : 0;
-  const bare = label === "✕";
-
-  return (
-    <ConfirmButton
-      label={label}
-      title={bare ? "Delete competition" : undefined}
-      ariaLabel={bare ? "Delete competition" : undefined}
-      message={recorded
-        ? `Delete this competition and ${recorded} recorded weigh-in${recorded === 1 ? "" : "s"}?`
-        : "Delete this competition?"}
-      onConfirm={() => {
-        if (!competition) return;
-        const snapshot = state;
-        api.deleteCompetition(competitionId);
-        showUndoToast("Competition removed", snapshot);
-        if (onDeleted) onDeleted();
-      }}
-    />
-  );
+function DeleteCompetitionButton({ competitionId, label, onDeleted }) {
+  return <DeleteRecordButton kind="competition" id={competitionId} label={label} onDeleted={onDeleted} />;
 }
 
-function DeleteTeamEventButton({ eventId, label = "Delete", onDeleted }) {
-  const { state, api, showUndoToast } = useApp();
-  const bare = label === "✕";
-
-  return (
-    <ConfirmButton
-      label={label}
-      title={bare ? "Delete event" : undefined}
-      ariaLabel={bare ? "Delete event" : undefined}
-      message="Delete this event?"
-      onConfirm={() => {
-        const snapshot = state;
-        api.deleteTeamEvent(eventId);
-        showUndoToast("Event removed", snapshot);
-        if (onDeleted) onDeleted();
-      }}
-    />
-  );
+function DeleteTeamEventButton({ eventId, label, onDeleted }) {
+  return <DeleteRecordButton kind="event" id={eventId} label={label} onDeleted={onDeleted} />;
 }
 
 function ArchivePage() {
