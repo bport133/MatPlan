@@ -254,6 +254,20 @@ const CSS = `
 /* The add form sits above the grid so it's visible without scrolling down. */
 .dayadd { border-color: var(--accent); }
 .cal-cell.out { background: #0b0b0b; color: #4a4d50; }
+/* A light diagonal strike marks days that have already passed — reads as
+   "done" without a legend, reusing the cell's own border color so it stays
+   unobtrusive against event pills and adapts automatically to print's
+   inverted palette. */
+.cal-cell.past::before {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--line) 50%, transparent calc(50% + 1px));
+  pointer-events: none;
+}
+.cal-daynum.today {
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(233, 233, 230, .22), 0 0 8px rgba(233, 233, 230, .15);
+}
 /* Wrap instead of ellipsis-truncating — a day with a full team + event
    name pill should show all of it rather than cutting it off. overflow-x
    above keeps that growth (and the delete button beside it) from ever
@@ -3549,6 +3563,7 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
                 dayNum={d.getDate()}
                 inMonth={d.getMonth() === month - 1}
                 isToday={key === todayK}
+                isPast={key < todayK}
                 selected={key === addDay}
                 entry={byDay.get(key) || { practices: [], competitions: [], events: [] }}
                 onAdd={() => { setPreview(null); setAddDay((cur) => (cur === key ? null : key)); }}
@@ -3932,10 +3947,10 @@ function DayAddPanel({ dateStr, defaultTeamId, onClose, go }) {
   );
 }
 
-function CalendarDay({ dateStr, dayNum, inMonth, isToday, selected, entry, onAdd, onSelect, previewId, teamLabel, colorOf, go }) {
+function CalendarDay({ dateStr, dayNum, inMonth, isToday, isPast, selected, entry, onAdd, onSelect, previewId, teamLabel, colorOf, go }) {
   return (
-    <div className={`cal-cell${inMonth ? "" : " out"}${selected ? " sel" : ""}`}>
-      <span className="xs sb" style={isToday ? { color: "var(--accent)" } : undefined}>{dayNum}</span>
+    <div className={`cal-cell${inMonth ? "" : " out"}${selected ? " sel" : ""}${isPast ? " past" : ""}`}>
+      <span className={`xs sb cal-daynum${isToday ? " today" : ""}`} style={isToday ? { color: "var(--accent)" } : undefined}>{dayNum}</span>
 
       {entry.practices.map((p) => (
         <div key={p.id} className="cal-evt">
