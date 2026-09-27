@@ -7776,8 +7776,7 @@ function MatPlan() {
         </div>
         {undo && (
           <div className="undo-toast no-print" role="status">
-            <span>{undo.message}</span>
-            <button className="btn btn-g btn-sm" onClick={undoLast}>Undo</button>
+            <button className="btn btn-g btn-sm" title={undo.message} aria-label={`Undo: ${undo.message}`} onClick={undoLast}>Undo</button>
           </div>
         )}
       </div>
