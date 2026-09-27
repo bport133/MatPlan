@@ -45,6 +45,21 @@ const CSS = `
   --tone-slate-bg: rgba(255,255,255,.06);
   --tone-slate-color: #b8bcc0;
   --tone-slate-border: rgba(255,255,255,.16);
+  /* Elevation + shape tokens — cards read as raised panels instead of flat
+     outlined boxes, and corners are soft/rounded instead of the old hard
+     angular notch. Kept as tokens (not baked into .card directly) so any
+     component can opt into the same depth language. */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.22);
+  --shadow-md: 0 6px 16px rgba(0,0,0,.4), 0 2px 6px rgba(0,0,0,.28);
+  --shadow-lg: 0 16px 40px rgba(0,0,0,.5), 0 6px 16px rgba(0,0,0,.32);
+  --radius-card: 14px;
+  --radius-sm: 8px;
+  /* Same red identity as --accent, just given depth via a gradient instead
+     of a flat fill — the brand color doesn't change, only how it's rendered. */
+  --grad-accent: linear-gradient(135deg, #ef2233, #a3141f);
+  --grad-warm: linear-gradient(135deg, #ffb454, #d97706);
+  --grad-cool: linear-gradient(135deg, #7dd3fc, #2563a8);
+  --grad-gold: linear-gradient(135deg, #f2c94c, #c9a227);
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -65,16 +80,28 @@ const CSS = `
   background-color: var(--panel);
   background-image: var(--texture);
   border: 1px solid var(--line);
-  border-radius: 2px;
-  clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 11px, 100% 100%, 11px 100%, 0 calc(100% - 11px));
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-md);
 }
 
 /* Trophy-case treatment for the Hall of Fame — these cards hold actual
    championship records, so a gold accent sets them apart from every
    other plain card in the app. */
-.hof-card { border-top: 3px solid #c9a227; }
-.hof-card .hdr { background: linear-gradient(180deg, rgba(201,162,39,.14), transparent); }
+.hof-card { border-top: 3px solid transparent; border-image: var(--grad-gold) 1; }
+.hof-card .hdr { background: linear-gradient(180deg, rgba(201,162,39,.14), transparent); border-radius: var(--radius-card) var(--radius-card) 0 0; }
 .hof-icon { color: #c9a227; flex-shrink: 0; }
+
+/* A subtle gradient top-bar on a page's lead .card, keying its section to a
+   color without recoloring the whole page — Squad/Weigh-In cool, Playbook/
+   Practice warm, Competitions/Hall of Fame gold, same red accent everywhere
+   else. Goes on the .card itself (whatever's first inside it — a sub-nav,
+   a .hdr) so it always lines up with the card's own top corners. Purely
+   decorative, applied by className on a handful of page headers. */
+.hdr-accent { position: relative; }
+.hdr-accent::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: var(--radius-card) var(--radius-card) 0 0; }
+.hdr-accent-warm::before { background: var(--grad-warm); }
+.hdr-accent-cool::before { background: var(--grad-cool); }
+.hdr-accent-gold::before { background: var(--grad-gold); }
 
 .row { display: flex; align-items: center; }
 .wrapf { flex-wrap: wrap; }
@@ -125,16 +152,17 @@ const CSS = `
 
 .undo-toast {
   position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 1000;
-  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 4px;
-  background: var(--panel2); border: 1px solid var(--line); box-shadow: 0 4px 16px rgba(0,0,0,.35);
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: var(--radius-sm);
+  background: var(--panel2); border: 1px solid var(--line); box-shadow: var(--shadow-lg);
   font-size: 14px; max-width: calc(100vw - 32px);
 }
 
 .inp {
-  width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 3px;
+  width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius-sm);
   padding: .4rem .6rem; font-size: .9375rem; color: var(--text); outline: none; font-family: inherit;
+  transition: border-color .15s, box-shadow .15s;
 }
-.inp:focus { border-color: var(--accent); }
+.inp:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(216,30,44,.18); }
 .mp textarea.inp { resize: vertical; min-height: 44px; }
 .mp select.inp { cursor: pointer; }
 .fld > span { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); display: block; margin-bottom: 4px; }
@@ -142,26 +170,29 @@ const CSS = `
 
 .mp button { font-family: inherit; cursor: pointer; }
 .btn {
-  display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .75rem; border-radius: 3px;
+  display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .75rem; border-radius: var(--radius-sm);
   font-size: .875rem; font-weight: 700; font-family: var(--font-heading); letter-spacing: .02em;
-  transition: .15s; border: none; background: none; text-decoration: none;
+  transition: transform .15s, box-shadow .15s, filter .15s, background .15s; border: none; background: none; text-decoration: none;
 }
-.btn-g { background: var(--accent); color: var(--accent-ink); }
-.btn-g:hover { filter: brightness(1.12); }
+.btn-g { background: var(--grad-accent); color: var(--accent-ink); box-shadow: var(--shadow-sm); }
+.btn-g:hover { filter: brightness(1.12); transform: translateY(-1px); box-shadow: var(--shadow-md); }
 .btn-o { background: var(--steel); color: #16181a; }
 .btn-o:hover { background: #9fa4a9; }
 .btn-ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
-.btn-ghost:hover { background: #2a2a2a; }
+.btn-ghost:hover { background: #2a2a2a; border-color: var(--accent); }
 .btn-sm { padding: .25rem .5rem; font-size: .8125rem; }
 .btn[disabled] { opacity: .5; cursor: not-allowed; }
+.btn[disabled]:hover { transform: none; box-shadow: none; }
 .mp :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .tab {
-  display: inline-flex; align-items: center; gap: .35rem; padding: .5rem .75rem; border-radius: 3px;
+  display: inline-flex; align-items: center; gap: .35rem; padding: .5rem .75rem; border-radius: var(--radius-sm);
   font-size: .875rem; font-weight: 700; font-family: var(--font-heading); text-transform: uppercase;
   letter-spacing: .04em; white-space: nowrap; color: var(--muted); background: none; border: none;
+  transition: background .15s, color .15s;
 }
-.tab.on { background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 1px var(--accent), 0 0 12px rgba(216,30,44,.35); }
+.tab:not(.on):hover { background: var(--panel2); color: var(--text); }
+.tab.on { background: var(--grad-accent); color: var(--accent-ink); box-shadow: 0 0 0 1px var(--accent), 0 4px 14px rgba(216,30,44,.35); }
 .tabs { display: flex; gap: .25rem; padding: .25rem; overflow-x: auto; }
 
 .seclbl { font-size: 12px; font-weight: 700; font-family: var(--font-heading); text-transform: uppercase; letter-spacing: .1em; color: var(--accent); padding-top: 4px; display: block; }
@@ -177,7 +208,7 @@ const CSS = `
 .mp td { padding: 8px 16px; }
 .mp tbody tr:hover { background: rgba(255,255,255,.03); }
 
-.ib { border: 1px solid var(--line); border-radius: 3px; overflow: hidden; background: var(--raised); }
+.ib { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; background: var(--raised); box-shadow: var(--shadow-sm); }
 .ibhdr { padding: 8px 12px; background: var(--panel2); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
 
 .iconbtn { color: var(--muted); }
@@ -3887,7 +3918,7 @@ function PracticeListPage() {
 
   return (
     <div className="grid" style={{ gap: 20 }}>
-      <div className="card">
+      <div className="card hdr-accent hdr-accent-warm">
         <div className="pad" style={{ paddingBottom: 0 }}><PracticeSubNav /></div>
         <div className="hdr">
           <span className="row gap2 wrapf">
@@ -5503,7 +5534,7 @@ function CompetitionsSummaryPage() {
 
   return (
     <div className="grid" style={{ gap: 20 }}>
-      <div className="card pad">
+      <div className="card pad hdr-accent hdr-accent-gold">
         <div className="row between wrapf">
           <h1 className="b" style={{ fontSize: 17 }}>Competitions</h1>
           <div className="row gap2 wrapf">
@@ -6193,7 +6224,7 @@ function RosterPage({ highlightId }) {
 
   return (
     <div className="grid" style={{ gap: 16 }}>
-      <div className="card">
+      <div className="card hdr-accent hdr-accent-cool">
         <div className="hdr">
           <h1 className="b" style={{ fontSize: 17 }}>Squad</h1>
           <div className="row gap2 wrapf">
@@ -6351,7 +6382,7 @@ function WeighInListPage() {
 
   return (
     <div className="grid" style={{ gap: 20 }}>
-      <div className="card">
+      <div className="card hdr-accent hdr-accent-cool">
         <div className="hdr"><h1 className="b" style={{ fontSize: 17 }}>Weigh-In</h1></div>
         <div className="pad grid" style={{ gap: 10 }}>
           <div className="row gap2 wrapf">
