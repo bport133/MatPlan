@@ -255,13 +255,15 @@ const CSS = `
 .dayadd { border-color: var(--accent); }
 .cal-cell.out { background: #0b0b0b; color: #4a4d50; }
 /* A light diagonal strike marks days that have already passed — reads as
-   "done" without a legend, reusing the cell's own border color so it stays
-   unobtrusive against event pills and adapts automatically to print's
-   inverted palette. */
+   "done" without a legend. Uses --muted (lighter than the cell's own
+   border color, so it actually reads against the dark cell background)
+   at reduced opacity to keep it lite, and adapts automatically to
+   print's inverted palette since --muted is repointed there too. */
 .cal-cell.past::before {
   content: "";
   position: absolute; inset: 0;
-  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--line) 50%, transparent calc(50% + 1px));
+  background: linear-gradient(to bottom right, transparent calc(50% - 1px), var(--muted) 50%, transparent calc(50% + 1px));
+  opacity: .55;
   pointer-events: none;
 }
 .cal-daynum.today {
