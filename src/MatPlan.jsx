@@ -60,6 +60,19 @@ const CSS = `
   --grad-warm: linear-gradient(135deg, #ffb454, #d97706);
   --grad-cool: linear-gradient(135deg, #7dd3fc, #2563a8);
   --grad-gold: linear-gradient(135deg, #f2c94c, #c9a227);
+  --grad-violet: linear-gradient(135deg, #c4b5fd, #7c3aed);
+  --grad-teal: linear-gradient(135deg, #5eead4, #0d9488);
+  --grad-emerald: linear-gradient(135deg, #6ee7b7, #059669);
+  /* A solid color per gradient above, for a box-shadow ring — box-shadow
+     can't take a gradient, so each tab's active-state glow pairs its
+     gradient's own darker stop here instead of falling back to one shared
+     color for every tab. */
+  --ring-violet: #7c3aed;
+  --ring-warm: #d97706;
+  --ring-teal: #0d9488;
+  --ring-cool: #2563a8;
+  --ring-gold: #c9a227;
+  --ring-emerald: #059669;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -92,16 +105,21 @@ const CSS = `
 .hof-icon { color: #c9a227; flex-shrink: 0; }
 
 /* A subtle gradient top-bar on a page's lead .card, keying its section to a
-   color without recoloring the whole page — Squad/Weigh-In cool, Playbook/
-   Practice warm, Competitions/Hall of Fame gold, same red accent everywhere
-   else. Goes on the .card itself (whatever's first inside it — a sub-nav,
-   a .hdr) so it always lines up with the card's own top corners. Purely
-   decorative, applied by className on a handful of page headers. */
+   color without recoloring the whole page — matched 1:1 to that page's own
+   tab color: Playbook violet, Practice Plans warm/orange, Squad teal,
+   Weigh-In cool/blue, Competitions emerald, Hall of Fame gold, Command
+   Center the everyday red accent. Goes on the .card itself (whatever's
+   first inside it — a sub-nav, a .hdr) so it always lines up with the
+   card's own top corners. Purely decorative, applied by className on a
+   handful of page headers. */
 .hdr-accent { position: relative; }
 .hdr-accent::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: var(--radius-card) var(--radius-card) 0 0; }
 .hdr-accent-warm::before { background: var(--grad-warm); }
 .hdr-accent-cool::before { background: var(--grad-cool); }
 .hdr-accent-gold::before { background: var(--grad-gold); }
+.hdr-accent-violet::before { background: var(--grad-violet); }
+.hdr-accent-teal::before { background: var(--grad-teal); }
+.hdr-accent-emerald::before { background: var(--grad-emerald); }
 
 .row { display: flex; align-items: center; }
 .wrapf { flex-wrap: wrap; }
@@ -192,6 +210,9 @@ const CSS = `
   transition: background .15s, color .15s;
 }
 .tab:not(.on):hover { background: var(--panel2); color: var(--text); }
+/* Fallback only — each tab supplies its own background/box-shadow inline
+   (see TABS' grad/ring/glow), one color per section rather than every tab
+   reading the same red when active. This covers a tab with no grad set. */
 .tab.on { background: var(--grad-accent); color: var(--accent-ink); box-shadow: 0 0 0 1px var(--accent), 0 4px 14px rgba(216,30,44,.35); }
 .tabs { display: flex; gap: .25rem; padding: .25rem; overflow-x: auto; }
 
@@ -3091,14 +3112,20 @@ function AppHeader({ logoDataUrl }) {
   );
 }
 
+// Each tab gets its own active-state color — grad for the fill, ring for
+// the box-shadow glow (box-shadow can't take a gradient, so it pairs the
+// gradient's own darker stop instead of one shared glow color for every
+// tab). Command Center keeps the everyday red accent; Hall of Fame keeps
+// gold; every other tab gets a color of its own, matched to that page's
+// own .hdr-accent-* header bar for the same identity top to bottom.
 const TABS = [
-  { tab: "dashboard", label: "Command Center" },
-  { tab: "syllabus", label: "Playbook" },
-  { tab: "practice", label: "Practice Plans" },
-  { tab: "roster", label: "Squad" },
-  { tab: "weighin", label: "Weigh-In" },
-  { tab: "competitions", label: "Competitions" },
-  { tab: "history", label: "Hall of Fame" },
+  { tab: "dashboard", label: "Command Center", grad: "--grad-accent", ring: "--accent" },
+  { tab: "syllabus", label: "Playbook", grad: "--grad-violet", ring: "--ring-violet" },
+  { tab: "practice", label: "Practice Plans", grad: "--grad-warm", ring: "--ring-warm" },
+  { tab: "roster", label: "Squad", grad: "--grad-teal", ring: "--ring-teal" },
+  { tab: "weighin", label: "Weigh-In", grad: "--grad-cool", ring: "--ring-cool" },
+  { tab: "competitions", label: "Competitions", grad: "--grad-emerald", ring: "--ring-emerald" },
+  { tab: "history", label: "Hall of Fame", grad: "--grad-gold", ring: "--ring-gold" },
 ];
 
 function TabNav() {
@@ -3107,11 +3134,19 @@ function TabNav() {
   return (
     <div className="card mb5 no-print" style={{ padding: 4, marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
       <div className="tabs">
-        {TABS.map((t) => (
-          <button key={t.tab} className={`tab${view.tab === t.tab ? " on" : ""}`} onClick={() => go(t.tab)}>
-            {t.label}
-          </button>
-        ))}
+        {TABS.map((t) => {
+          const on = view.tab === t.tab;
+          return (
+            <button
+              key={t.tab}
+              className={`tab${on ? " on" : ""}`}
+              style={on ? { background: `var(${t.grad})`, boxShadow: `0 0 0 1px var(${t.ring}), 0 4px 14px rgba(0,0,0,.35)` } : undefined}
+              onClick={() => go(t.tab)}
+            >
+              {t.label}
+            </button>
+          );
+        })}
       </div>
       <div className="row gap2" style={{ flexShrink: 0, marginRight: 4 }}>
         <GlobalSearch />
@@ -5538,7 +5573,7 @@ function CompetitionsSummaryPage() {
 
   return (
     <div className="grid" style={{ gap: 20 }}>
-      <div className="card pad hdr-accent hdr-accent-gold">
+      <div className="card pad hdr-accent hdr-accent-emerald">
         <div className="row between wrapf">
           <h1 className="b" style={{ fontSize: 17 }}>Competitions</h1>
           <div className="row gap2 wrapf">
@@ -5697,7 +5732,7 @@ function SyllabusPage() {
   }
 
   return (
-    <div className="card">
+    <div className="card hdr-accent hdr-accent-violet">
       <div className="hdr">
         <h1 className="b" style={{ fontSize: 17 }}>Playbook</h1>
         <div className="row gap2 wrapf">
@@ -6228,7 +6263,7 @@ function RosterPage({ highlightId }) {
 
   return (
     <div className="grid" style={{ gap: 16 }}>
-      <div className="card hdr-accent hdr-accent-cool">
+      <div className="card hdr-accent hdr-accent-teal">
         <div className="hdr">
           <h1 className="b" style={{ fontSize: 17 }}>Squad</h1>
           <div className="row gap2 wrapf">
