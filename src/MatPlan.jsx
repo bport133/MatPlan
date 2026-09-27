@@ -3216,11 +3216,11 @@ function CustomizeMenu() {
       <button
         ref={btnRef}
         className="btn btn-ghost btn-sm"
-        title="Customize appearance, User Guide, Sign Out"
+        title="Settings, User Guide, Sign Out"
         onClick={toggle}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       >
-        ⚙ Customize
+        ⚙ Settings
       </button>
       {menu && createPortal(menu, mpPortalTarget())}
     </div>
