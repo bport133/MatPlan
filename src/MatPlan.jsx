@@ -4614,7 +4614,6 @@ function PracticeDayPage({ practiceId }) {
 
   const totalMinutes = practice.rows.reduce((sum, r) => sum + (r.durationMin || 0), 0);
   const windowMinutes = clockDuration(practice.startTime, practice.endTime);
-  const sheet = state.weighInSheets.find((s) => s.practiceId === practice.id);
 
   return (
     <div className="grid" style={{ gap: 16 }}>
@@ -4731,31 +4730,6 @@ function PracticeDayPage({ practiceId }) {
           <button className="btn btn-g btn-sm" onClick={() => go("practice", "detail", practice.id)}>
             {practice.rows.length === 0 ? "Build the Plan →" : "Open Practice Plan →"}
           </button>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="hdr"><h2 className="sb" style={{ fontSize: 15 }}>Weigh-In</h2></div>
-        <div className="pad row between wrapf">
-          <span className="muted xs">
-            {sheet ? `${sheetCount(sheet)} on the sheet` : "No weigh-in sheet for this practice."}
-          </span>
-          {sheet ? (
-            <button className="btn btn-ghost btn-sm" onClick={() => go("weighin", "detail", sheet.id)}>Open Weigh-In Sheet →</button>
-          ) : (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => go("weighin", "detail", api.createWeighInSheet({
-                date: practice.date,
-                event: `Practice${practice.practiceNumber ? ` #${practice.practiceNumber}` : ""}`,
-                homeTeam: teamName(practice.teamId) || state.program.name,
-                teamId: practice.teamId,
-                practiceId: practice.id,
-              }))}
-            >
-              + Weigh-In Sheet
-            </button>
-          )}
         </div>
       </div>
     </div>
