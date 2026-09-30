@@ -4070,9 +4070,21 @@ function PracticeListPage() {
   const [teamFilter, setTeamFilter] = useState(null);
   const [newTeamId, setNewTeamId] = useState((state.teams[0] || {}).id || null);
 
+  // Same season-dropdown structure as Competitions: past seasons' completed
+  // plans are reached by switching the season here rather than only through
+  // the separate Archive tab (which stays, for date-range/skill search that
+  // isn't season-bound).
+  const currentSeason = seasonKey(todayStr());
+  const seasons = Array.from(new Set(state.practices.map((p) => seasonKey(p.date))));
+  if (!seasons.includes(currentSeason)) seasons.push(currentSeason);
+  seasons.sort((a, b) => b - a);
+  const [season, setSeason] = useState(currentSeason);
+
   const onTeam = (p) => !teamFilter || p.teamId === teamFilter;
   const upcoming = state.practices.filter((p) => !p.reconciledAt && onTeam(p)).sort((a, b) => a.date.localeCompare(b.date));
-  const reconciled = state.practices.filter((p) => p.reconciledAt && onTeam(p)).sort((a, b) => b.date.localeCompare(a.date));
+  const reconciled = state.practices
+    .filter((p) => p.reconciledAt && onTeam(p) && seasonKey(p.date) === season)
+    .sort((a, b) => b.date.localeCompare(a.date));
   const label = (p) => `${teamFilter ? "" : `${teamName(p.teamId) || "—"} · `}#${p.practiceNumber || "—"}`;
 
   return (
@@ -4080,15 +4092,17 @@ function PracticeListPage() {
       <div className="card hdr-accent hdr-accent-warm">
         <div className="pad" style={{ paddingBottom: 0 }}><PracticeSubNav /></div>
         <div className="hdr">
-          <span className="row gap2 wrapf">
-            <h1 className="b" style={{ fontSize: 17 }}>Practice Plans</h1>
-            <Pill label={`Season ${seasonLabel(seasonKey(date))}`} tone="slate" />
-          </span>
+          <h1 className="b" style={{ fontSize: 17 }}>Practice Plans</h1>
           <div className="row gap2 wrapf">
-            <span className="muted tiny upper">Showing</span>
+            <select className="inp" value={season} onChange={(e) => setSeason(Number(e.target.value))}>
+              {seasons.map((s) => <option key={s} value={s}>Season {seasonLabel(s)}</option>)}
+            </select>
             <TeamSelect value={teamFilter} onChange={setTeamFilter} allLabel="All Teams" style={{ maxWidth: 180 }} />
           </div>
         </div>
+        <p className="muted xs" style={{ padding: "8px 16px 0" }}>
+          {reconciled.length} practice{reconciled.length === 1 ? "" : "s"} completed this season.
+        </p>
         <div className="pad">
           <div className="row gap2 wrapf">
             <TeamSelect value={newTeamId} onChange={setNewTeamId} style={{ maxWidth: 180 }} />
@@ -4127,7 +4141,7 @@ function PracticeListPage() {
           <button className="link xs" onClick={() => go("practice", "archive")}>View full archive →</button>
         </div>
         <div className="divide">
-          {reconciled.slice(0, 5).map((p) => (
+          {reconciled.map((p) => (
             <div key={p.id} className="row">
               <div className="pad row between click" style={{ flex: 1 }} onClick={() => go("practice", "detail", p.id)}>
                 <span className="sb">{fmtFull(p.date)}<span className="muted xs"> · {label(p)}</span></span>
@@ -4138,7 +4152,7 @@ function PracticeListPage() {
               </div>
             </div>
           ))}
-          {reconciled.length === 0 && <div className="pad muted xs">Nothing completed yet.</div>}
+          {reconciled.length === 0 && <div className="pad muted xs">Nothing completed this season.</div>}
         </div>
       </div>
     </div>
