@@ -2635,14 +2635,30 @@ function makeApi(update) {
       }));
     },
     // Links an existing row to a playbook item (picked from the inline
-    // Skill/Concept search) rather than creating a new row — the row keeps
-    // its own category/duration/teaching cues as already entered; only the
-    // ad-hoc label is replaced by the link.
+    // Skill/Concept search) rather than creating a new row. Pre-fills
+    // Teaching Cues from the item's own cues as a starting point — but only
+    // when the row's Teaching Cues is still blank, so relinking an already
+    // hand-annotated row never clobbers a coach's own notes.
     setRowSyllabusItem(pid, rowId, syllabusItemId) {
-      patchPractice(pid, (p) => ({
-        ...p,
-        rows: p.rows.map((r) => (r.id === rowId ? { ...r, syllabusItemId, adHocLabel: "" } : r)),
-      }));
+      update((s) => {
+        const item = s.syllabus.find((i) => i.id === syllabusItemId);
+        const cueText = item ? item.cues.map((c) => c.text).join(" | ") : "";
+        return {
+          ...s,
+          practices: s.practices.map((p) =>
+            p.id !== pid
+              ? p
+              : {
+                  ...p,
+                  rows: p.rows.map((r) =>
+                    r.id === rowId
+                      ? { ...r, syllabusItemId, adHocLabel: "", teachingCues: r.teachingCues || cueText }
+                      : r
+                  ),
+                }
+          ),
+        };
+      });
     },
     updateRow(pid, rowId, data) {
       patchPractice(pid, (p) => ({ ...p, rows: p.rows.map((r) => (r.id === rowId ? { ...r, ...data } : r)) }));
@@ -4970,7 +4986,7 @@ function PracticeEditor({ practiceId }) {
 }
 
 function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions }) {
-  const { api } = useApp();
+  const { state, api } = useApp();
   const [showCues, setShowCues] = useState(false);
   const [category, setCategory] = useState(row.category);
   const [durationMin, setDurationMin] = useState(row.durationMin);
@@ -5004,7 +5020,14 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
               value={adHocLabel}
               options={leafOptions}
               onChangeText={setAdHocLabel}
-              onPick={(id) => { api.setRowSyllabusItem(practiceId, row.id, id); setAdHocLabel(""); }}
+              onPick={(id) => {
+                api.setRowSyllabusItem(practiceId, row.id, id);
+                setAdHocLabel("");
+                if (!teachingCues) {
+                  const picked = state.syllabus.find((i) => i.id === id);
+                  if (picked) setTeachingCues(picked.cues.map((c) => c.text).join(" | "));
+                }
+              }}
               onBlur={() => save()}
             />
           ) : (
