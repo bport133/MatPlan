@@ -2664,7 +2664,7 @@ function makeApi(update) {
     reopenPractice: (id) => patchIn("practices", id, { reconciledAt: null }),
 
     /* ---- roster ---- */
-    createWrestler(name, weight, teamIds, level, weightClass) {
+    createWrestler(name, weight, teamIds, level, weightClass, grade) {
       update((s) => {
         const list = (teamIds || []).filter(Boolean);
         return {
@@ -2676,6 +2676,7 @@ function makeApi(update) {
               teamIds: list.length ? list : [(s.teams[0] && s.teams[0].id)].filter(Boolean),
               order: nextOrder(s.wrestlers),
               ...emptyWrestlerDetails(),
+              grade: grade || "",
               detailsAdded: true,
               weightMigrated: true,
             },
@@ -6312,6 +6313,7 @@ function RosterPage({ highlightId }) {
   const [name, setName] = useState("");
   const [weight, setWeight] = useState("");
   const [weightClass, setWeightClass] = useState("");
+  const [grade, setGrade] = useState("");
   const [level, setLevel] = useState("");
   const [teamFilter, setTeamFilter] = useState(null);
   const [newTeamId, setNewTeamId] = useState((state.teams[0] || {}).id || null);
@@ -6363,10 +6365,11 @@ function RosterPage({ highlightId }) {
 
   function addWrestler() {
     if (!name.trim() || !level) return;
-    api.createWrestler(name.trim(), weight ? Number(weight) : null, [addTeamId], Number(level), weightClass || null);
+    api.createWrestler(name.trim(), weight ? Number(weight) : null, [addTeamId], Number(level), weightClass || null, grade.trim() || null);
     setName("");
     setWeight("");
     setWeightClass("");
+    setGrade("");
     setLevel("");
   }
 
@@ -6404,6 +6407,7 @@ function RosterPage({ highlightId }) {
           <option value="">Weight Class</option>
           {addTeamClasses.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
         </select>
+        <input className="inp" style={{ maxWidth: 100 }} placeholder="Grade" value={grade} onChange={(e) => setGrade(e.target.value)} />
         <select className="inp" style={{ maxWidth: 150 }} value={level} onChange={(e) => setLevel(e.target.value)}>
           <option value="">Level</option>
           {WRESTLER_LEVELS.map((l) => <option key={l} value={l}>{l} - {LEVEL_LABEL[l]}</option>)}
@@ -6420,6 +6424,7 @@ function WrestlerRow({ wrestler, showTeam, highlighted }) {
   const [name, setName] = useState(wrestler.name);
   const [weight, setWeight] = useState(wrestler.weight != null ? String(wrestler.weight) : "");
   const [weightClass, setWeightClass] = useState(wrestler.weightClass || "");
+  const [grade, setGrade] = useState(wrestler.grade || "");
   const [level, setLevel] = useState(wrestler.level != null ? String(wrestler.level) : "");
   const [active, setActive] = useState(wrestler.active);
   const classOptions = weightClassesForTeams(state, teamsOf(wrestler));
@@ -6440,6 +6445,7 @@ function WrestlerRow({ wrestler, showTeam, highlighted }) {
         <div className="row gap2 wrapf">
           {wrestler.weight != null && <Pill label={`${wrestler.weight} lbs`} tone="slate" />}
           {wrestler.weightClass && <Pill label={`Class ${wrestler.weightClass}`} tone="slate" />}
+          {wrestler.grade && <Pill label={`Grade ${wrestler.grade}`} tone="slate" />}
           {!wrestler.active && <Pill label="Inactive" tone="red" />}
         </div>
         <div>
@@ -6470,6 +6476,11 @@ function WrestlerRow({ wrestler, showTeam, highlighted }) {
             <option value="">Weight Class</option>
             {classOptions.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
           </select>
+          <input
+            className="inp" style={{ maxWidth: 100 }} placeholder="Grade" value={grade}
+            onChange={(e) => setGrade(e.target.value)}
+            onBlur={() => api.updateWrestler(wrestler.id, { grade })}
+          />
           <select
             className="inp" style={{ maxWidth: 150 }} value={level}
             onChange={(e) => { setLevel(e.target.value); api.updateWrestler(wrestler.id, { level: e.target.value ? Number(e.target.value) : null }); }}
@@ -7101,7 +7112,7 @@ function UserGuidePage() {
           <li><b>Weight Class</b> — a dropdown, not free text, drawn from whichever Weight Class Set is that wrestler's team's default (Customize → Teams). If a wrestler is on more than one team, the dropdown offers the union of both teams' classes.</li>
           <li><b>Level</b> — required when you bring up a new wrestler (JV/Varsity-style tiering); editable afterward.</li>
         </ul>
-        <p><b>Adding a wrestler</b> requires a Name and a Level before "+ Bring Up a Wrestler" is clickable; Weight and Weight Class are optional at that point and can be filled in anytime via Edit.</p>
+        <p><b>Adding a wrestler</b> requires a Name and a Level before "+ Bring Up a Wrestler" is clickable; Weight, Weight Class, and Grade are optional at that point and can be filled in anytime via Edit.</p>
         <p><b>Multi-team wrestlers:</b> the checkboxes under Edit let one wrestler belong to more than one team (a Cup kid who also wrestles Elite, say) — they can't be removed from their last team, so there's always at least one.</p>
         <p><b>Import/export:</b> the CSV tools accept either your own simple format (Name, Teams, Weight Class, Active) or a 25-column club registration export (Team, First, Last, DOB, …, Weight, …) — the app detects which by column count. Importing matches existing wrestlers by full name and updates them rather than duplicating.</p>
         <p className="sb xs" style={{ marginBottom: -4 }}>Where Squad shows up elsewhere:</p>
