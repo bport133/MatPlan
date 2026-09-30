@@ -1431,6 +1431,7 @@ const emptyWrestlerDetails = () => Object.fromEntries(WRESTLER_DETAIL_FIELDS.map
 
 const WRESTLER_LEVELS = [1, 2, 3, 4];
 const LEVEL_LABEL = { 1: "Beginner", 2: "Intermediate", 3: "Advanced", 4: "Elite" };
+const GRADE_OPTIONS = ["K", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"];
 
 const teamColor = (team) => (team && team.color) || TEAM_COLORS[0];
 
@@ -6407,7 +6408,10 @@ function RosterPage({ highlightId }) {
           <option value="">Weight Class</option>
           {addTeamClasses.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
         </select>
-        <input className="inp" style={{ maxWidth: 100 }} placeholder="Grade" value={grade} onChange={(e) => setGrade(e.target.value)} />
+        <select className="inp" style={{ maxWidth: 100 }} value={grade} onChange={(e) => setGrade(e.target.value)}>
+          <option value="">Grade</option>
+          {GRADE_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
         <select className="inp" style={{ maxWidth: 150 }} value={level} onChange={(e) => setLevel(e.target.value)}>
           <option value="">Level</option>
           {WRESTLER_LEVELS.map((l) => <option key={l} value={l}>{l} - {LEVEL_LABEL[l]}</option>)}
@@ -6476,11 +6480,13 @@ function WrestlerRow({ wrestler, showTeam, highlighted }) {
             <option value="">Weight Class</option>
             {classOptions.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
           </select>
-          <input
-            className="inp" style={{ maxWidth: 100 }} placeholder="Grade" value={grade}
-            onChange={(e) => setGrade(e.target.value)}
-            onBlur={() => api.updateWrestler(wrestler.id, { grade })}
-          />
+          <select
+            className="inp" style={{ maxWidth: 100 }} value={grade}
+            onChange={(e) => { setGrade(e.target.value); api.updateWrestler(wrestler.id, { grade: e.target.value }); }}
+          >
+            <option value="">Grade</option>
+            {GRADE_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
           <select
             className="inp" style={{ maxWidth: 150 }} value={level}
             onChange={(e) => { setLevel(e.target.value); api.updateWrestler(wrestler.id, { level: e.target.value ? Number(e.target.value) : null }); }}
