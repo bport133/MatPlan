@@ -2633,33 +2633,15 @@ function makeApi(update) {
         ],
       }));
     },
-    addRowFromSyllabus(pid, syllabusItemId) {
-      update((s) => {
-        const item = s.syllabus.find((i) => i.id === syllabusItemId);
-        return {
-          ...s,
-          practices: s.practices.map((p) =>
-            p.id === pid
-              ? {
-                  ...p,
-                  rows: [
-                    ...p.rows,
-                    {
-                      id: uid(),
-                      order: nextOrder(p.rows),
-                      category: "DRILL",
-                      durationMin: 0,
-                      syllabusItemId,
-                      adHocLabel: "",
-                      teachingCues: item ? item.cues.map((c) => c.text).join(" | ") : "",
-                      outcome: "PLANNED",
-                    },
-                  ],
-                }
-              : p
-          ),
-        };
-      });
+    // Links an existing row to a playbook item (picked from the inline
+    // Skill/Concept search) rather than creating a new row — the row keeps
+    // its own category/duration/teaching cues as already entered; only the
+    // ad-hoc label is replaced by the link.
+    setRowSyllabusItem(pid, rowId, syllabusItemId) {
+      patchPractice(pid, (p) => ({
+        ...p,
+        rows: p.rows.map((r) => (r.id === rowId ? { ...r, syllabusItemId, adHocLabel: "" } : r)),
+      }));
     },
     updateRow(pid, rowId, data) {
       patchPractice(pid, (p) => ({ ...p, rows: p.rows.map((r) => (r.id === rowId ? { ...r, ...data } : r)) }));
@@ -3596,9 +3578,10 @@ function CalendarSection({ teamFilter, onTeamFilterChange }) {
  * floating popover over the day cell would be cut off at the card edge.
  */
 function EventPreview({ kind, id, onClose, go }) {
-  const { state } = useApp();
+  const { state, api } = useApp();
   const teamName = useTeamName();
   const panelRef = useRef(null);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     if (panelRef.current) panelRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -3618,6 +3601,80 @@ function EventPreview({ kind, id, onClose, go }) {
   const title = practice
     ? `Practice${practice.practiceNumber ? ` #${practice.practiceNumber}` : ""}`
     : competition.name;
+
+  // Same fields, same handlers as PracticeDayPage's own "Edit details" —
+  // editing them here means a coach glancing at the calendar doesn't have
+  // to open the practice first just to fix a location or time.
+  if (practice && editing) {
+    return (
+      <div ref={panelRef} className="ib pad dayadd" style={{ marginBottom: 12 }}>
+        <div className="row between wrapf gap2" style={{ marginBottom: 10 }}>
+          <span className="sb xs">Edit Practice</span>
+          <button className="btn btn-ghost btn-sm iconbtn" onClick={onClose}>Close</button>
+        </div>
+        <div className="grid g4">
+          <Field label="Team">
+            <TeamSelect value={practice.teamId} onChange={(teamId) => api.movePracticeToTeam(practice.id, teamId)} />
+          </Field>
+          <Field label="Practice #">
+            <input
+              key={`n${practice.practiceNumber}`}
+              className="inp"
+              placeholder="Practice #"
+              defaultValue={practice.practiceNumber != null ? String(practice.practiceNumber) : ""}
+              onBlur={(e) => {
+                const n = Number(e.target.value);
+                api.updatePracticeHeader(practice.id, { practiceNumber: e.target.value.trim() && !Number.isNaN(n) ? n : null });
+              }}
+            />
+          </Field>
+          <Field label="Date">
+            <input
+              type="date"
+              className="inp"
+              defaultValue={practice.date}
+              onBlur={(e) => e.target.value && api.updatePracticeHeader(practice.id, { date: e.target.value })}
+            />
+          </Field>
+          <Field label="Start Time">
+            <input
+              className="inp"
+              placeholder="Start time (6:00 PM)"
+              defaultValue={practice.startTime || ""}
+              onBlur={(e) => api.updatePracticeHeader(practice.id, { startTime: e.target.value.trim() })}
+            />
+          </Field>
+          <Field label="End Time">
+            <input
+              className="inp"
+              placeholder="End time (7:30 PM)"
+              defaultValue={practice.endTime || ""}
+              onBlur={(e) => api.updatePracticeHeader(practice.id, { endTime: e.target.value.trim() })}
+            />
+          </Field>
+          <Field label="Location">
+            <input
+              className="inp"
+              placeholder="Location"
+              defaultValue={practice.location || ""}
+              onBlur={(e) => api.updatePracticeHeader(practice.id, { location: e.target.value.trim() || null })}
+            />
+          </Field>
+          <Field label="Address">
+            <input
+              className="inp"
+              placeholder="Street address"
+              defaultValue={practice.address || ""}
+              onBlur={(e) => api.updatePracticeHeader(practice.id, { address: e.target.value.trim() || null })}
+            />
+          </Field>
+        </div>
+        <div className="row gap2" style={{ marginTop: 10 }}>
+          <button className="btn btn-g btn-sm" onClick={() => setEditing(false)}>Done</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={panelRef} className="ib pad dayadd" style={{ marginBottom: 12 }}>
@@ -3644,6 +3701,7 @@ function EventPreview({ kind, id, onClose, go }) {
           <>
             <button className="btn btn-g btn-sm" onClick={() => go("dashboard", "practiceday", practice.id)}>Open Practice →</button>
             <button className="btn btn-ghost btn-sm" onClick={() => go("practice", "detail", practice.id)}>Practice Plan →</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}>Edit</button>
           </>
         ) : (
           <button className="btn btn-g btn-sm" onClick={() => go("dashboard", "competition", competition.id)}>Open Competition →</button>
@@ -4444,47 +4502,53 @@ function RichTextEditor({ value, onChange, onBlur, autoBullet }) {
   );
 }
 
-function SyllabusPicker({ options, onSelect, placeholder = "Search the playbook…" }) {
+/**
+ * The Skill/Concept field on an unlinked row: a plain text input that
+ * doubles as a search-the-playbook combobox. Typing filters a dropdown of
+ * matching playbook items; picking one links the row to it (via the
+ * onPick callback). Leaving free text and clicking away just saves it as
+ * an ad-hoc, not-in-the-playbook skill, exactly as a plain text field
+ * always has — there's no separate "add from playbook" step anymore.
+ */
+function SkillConceptField({ value, options, onChangeText, onPick, onBlur }) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter(
-      (o) =>
-        o.name.toLowerCase().includes(q) ||
-        o.position.toLowerCase().includes(q) ||
-        (o.situation || "").toLowerCase().includes(q)
-    );
-  }, [options, query]);
-
-  if (!open) {
-    return <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>+ Concept/Skill from Playbook</button>;
-  }
+    const q = value.trim().toLowerCase();
+    if (!q) return [];
+    return options
+      .filter(
+        (o) =>
+          o.name.toLowerCase().includes(q) ||
+          o.position.toLowerCase().includes(q) ||
+          (o.situation || "").toLowerCase().includes(q)
+      )
+      .slice(0, 8);
+  }, [options, value]);
 
   return (
-    <div className="ib" style={{ maxWidth: 420 }}>
-      <div className="ibhdr">
-        <input className="inp" autoFocus placeholder={placeholder} value={query} onChange={(e) => setQuery(e.target.value)} />
-        <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Close</button>
-      </div>
-      <div style={{ maxHeight: 260, overflowY: "auto" }} className="divide">
-        {filtered.map((o) => (
-          <button
-            key={o.id}
-            className="pad click"
-            style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "inherit" }}
-            onClick={() => { onSelect(o.id); setQuery(""); setOpen(false); }}
-          >
-            <div className="row gap2 wrapf">
-              <span className="sb xs">{o.name}</span>
-            </div>
-            <div className="muted tiny">{[o.position, o.situation].filter(Boolean).join(" › ")}</div>
-          </button>
-        ))}
-        {filtered.length === 0 && <div className="pad muted xs">No matches.</div>}
-      </div>
+    <div style={{ position: "relative", maxWidth: 220, width: "100%" }}>
+      <input
+        className="inp"
+        style={{ width: "100%" }}
+        placeholder="Skill / Concept"
+        value={value}
+        onChange={(e) => { onChangeText(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => { setOpen(false); onBlur(); }}
+      />
+      {open && filtered.length > 0 && (
+        <div className="search-results" style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, width: 260 }}>
+          {filtered.map((o) => (
+            // preventDefault on mousedown stops the input's blur (and the
+            // ad-hoc save it triggers) from firing before the pick lands.
+            <button key={o.id} className="search-result" onMouseDown={(e) => { e.preventDefault(); onPick(o.id); }}>
+              <span className="sb xs" style={{ display: "block" }}>{o.name}</span>
+              <span className="muted tiny">{[o.position, o.situation].filter(Boolean).join(" › ")}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -4892,6 +4956,7 @@ function PracticeEditor({ practiceId }) {
               editable={editable}
               isFirst={i === 0}
               isLast={i === sortedRows.length - 1}
+              leafOptions={leafOptions}
             />
           ))}
           {sortedRows.length === 0 && <div className="pad muted xs">Build the practice below.</div>}
@@ -4899,11 +4964,6 @@ function PracticeEditor({ practiceId }) {
 
         {editable && (
           <div className="pad row gap2 wrapf no-print">
-            <SyllabusPicker
-              options={leafOptions}
-              onSelect={(id) => api.addRowFromSyllabus(practice.id, id)}
-              placeholder="Search the playbook to add a row…"
-            />
             {CATEGORIES.map((c) => (
               <button key={c} className="btn btn-ghost btn-sm" onClick={() => api.addRow(practice.id, c)}>
                 + {CATEGORY_LABEL[c]}
@@ -4919,7 +4979,7 @@ function PracticeEditor({ practiceId }) {
   );
 }
 
-function RowItem({ practiceId, row, item, editable, isFirst, isLast }) {
+function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions }) {
   const { api } = useApp();
   const [showCues, setShowCues] = useState(false);
   const [category, setCategory] = useState(row.category);
@@ -4950,12 +5010,11 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast }) {
               <span className="muted tiny">{[item.position, item.situation].filter(Boolean).join(" › ")}</span>
             </>
           ) : editable ? (
-            <input
-              className="inp"
-              style={{ maxWidth: 220 }}
-              placeholder="Skill / Concept"
+            <SkillConceptField
               value={adHocLabel}
-              onChange={(e) => setAdHocLabel(e.target.value)}
+              options={leafOptions}
+              onChangeText={setAdHocLabel}
+              onPick={(id) => { api.setRowSyllabusItem(practiceId, row.id, id); setAdHocLabel(""); }}
               onBlur={() => save()}
             />
           ) : (
