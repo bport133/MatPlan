@@ -5150,7 +5150,7 @@ function seasonTournamentPlacements(competitions) {
   return competitions
     .filter((c) => c.type === "TOURNAMENT")
     .map((c) => ({ competitionId: c.id, name: c.name, date: c.date, placement: c.teamPlacement, teamScore: c.teamScore }))
-    .sort((a, b) => (a.date < b.date ? 1 : -1));
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
 /** Per-wrestler win/loss across the season, pooling dual bouts (by
@@ -5678,7 +5678,7 @@ function CompetitionsSummaryPage() {
       });
     }
   }
-  dualRows.sort((a, b) => (a.date < b.date ? 1 : -1));
+  dualRows.sort((a, b) => (a.date < b.date ? -1 : 1));
 
   return (
     <div className="grid" style={{ gap: 20 }}>
