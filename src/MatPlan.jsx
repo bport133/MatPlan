@@ -404,6 +404,7 @@ const CSS = `
   }
   .mp .rte, .mp .rte-content, .mp .rte-readonly { border: none !important; background: none !important; padding: 0 !important; }
   .mp .prow { break-inside: avoid; }
+  .mp .prow-name { font-size: 15px !important; }
   /*
    * The practice header (Team/Practice #/Start/End/Duration) normally
    * stacks a label above its value for a comfortable editing target, but on
@@ -5026,7 +5027,7 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
         <div className="row gap2 wrapf">
           {item ? (
             <>
-              <span className="sb">{item.name}</span>
+              <span className="sb prow-name">{item.name}</span>
               <span className="muted tiny no-print">{[item.position, item.situation].filter(Boolean).join(" › ")}</span>
             </>
           ) : editable ? (
@@ -5045,7 +5046,7 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
               onBlur={() => save()}
             />
           ) : (
-            <span className="sb">{adHocLabel || "(untitled)"}</span>
+            <span className="sb prow-name">{adHocLabel || "(untitled)"}</span>
           )}
         </div>
         {editable ? (
