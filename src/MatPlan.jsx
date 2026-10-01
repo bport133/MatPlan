@@ -418,6 +418,26 @@ const CSS = `
   .mp .ibhdr { background: #f3f3f3 !important; }
   .mp .cal-cell.out { background: #f3f3f3 !important; color: #888 !important; }
   .mp .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* .seclbl (section labels like "TEAM:", "DURATION:") and .link (button-
+     styled nav actions like "← Plans") both hardcode color: var(--accent) —
+     the program's customizable accent color, red by default — which was
+     never neutralized for print like --text/--muted above. Labels print in
+     black like everything else; nav links carry no information on paper so
+     they're dropped entirely instead of showing as colored dead text. */
+  .mp .seclbl { color: #000 !important; }
+  .mp .link { display: none !important; }
+  /* A reconciled (completed) practice's Category shows as a colored Pill
+     instead of the plain-text no-print/print-only twin a draft practice
+     uses (see .prow-grid below) — its tone colors are tuned for the app's
+     dark background and read as distinctly green/blue/amber on white
+     paper. Flatten it to the same plain bold text the draft case prints,
+     so Category looks identical whether the practice is a draft or done. */
+  .mp .prow-grid .pill {
+    background: none !important;
+    border: none !important;
+    color: #000 !important;
+    padding: 0 !important;
+  }
   /* Printed <input>/<select>/<textarea> never inherit the page's own
      font-size — browsers give form controls their own UA default (~15px)
      regardless of ancestor font-size, print or not. Left alone, every
