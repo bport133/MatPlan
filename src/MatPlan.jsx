@@ -83,6 +83,13 @@ const CSS = `
 .mp * { box-sizing: border-box; }
 .mp p, .mp h1, .mp h2, .mp h3, .mp ul { margin: 0; }
 .print-footer { display: none; }
+/* Chromium's actual print-to-PDF pipeline (not just @media print on
+   screen) renders <select>/<input> text using native OS widget styling
+   regardless of CSS color/appearance — they print in the platform's
+   control-text blue no matter what. The only reliable fix is to never
+   let a live form control reach the printed page at all: pair it with a
+   plain-text .print-only twin for the same value. */
+.print-only { display: none; }
 
 /* Capped well above the old 1100px (which clipped content) but short of
    the full window on a wide monitor — edge-to-edge left everything from
@@ -449,6 +456,10 @@ const CSS = `
      under display: inline; drop the width so they size to their content
      and stay on the label's line instead. */
   .mp .thead input, .mp .thead select { display: inline !important; width: auto !important; }
+  /* Higher specificity than the rule above (3 classes vs. 2 classes + an
+     element), so a no-print twin inside .thead actually hides instead of
+     being forced back to display: inline by it. */
+  .mp .thead .no-print { display: none !important; }
   /*
    * The calendar month grid otherwise only takes the height its cells need
    * at 5:3 aspect ratio, leaving the bottom quarter of the page blank.
@@ -467,6 +478,7 @@ const CSS = `
     display: block; text-align: center; font-size: 10px; color: #888;
     margin-top: 10px; padding-top: 6px; border-top: 1px solid #ddd;
   }
+  .print-only { display: inline; }
 }
 `;
 
@@ -4605,7 +4617,7 @@ function SkillConceptField({ value, options, onChangeText, onPick, onBlur }) {
   return (
     <div style={{ position: "relative", maxWidth: 220, width: "100%" }}>
       <input
-        className="inp prow-name"
+        className="inp prow-name no-print"
         style={{ width: "100%" }}
         placeholder="Skill / Concept"
         value={value}
@@ -4613,6 +4625,9 @@ function SkillConceptField({ value, options, onChangeText, onPick, onBlur }) {
         onFocus={() => setOpen(true)}
         onBlur={() => { setOpen(false); onBlur(); }}
       />
+      {/* Same print-pipeline quirk as the category <select> below — a live
+          <input>'s text prints in native widget blue regardless of CSS. */}
+      <span className="sb prow-name print-only">{value || "(untitled)"}</span>
       {open && filtered.length > 0 && (
         <div className="search-results" style={{ position: "absolute", top: "100%", left: 0, marginTop: 4, width: 260 }}>
           {filtered.map((o) => (
@@ -4928,10 +4943,18 @@ function PracticeEditor({ practiceId }) {
           <div>
             <span className="seclbl">Team</span>
             {editable ? (
-              <TeamSelect
-                value={practice.teamId}
-                onChange={(id) => api.movePracticeToTeam(practice.id, id)}
-              />
+              <>
+                <span className="no-print">
+                  <TeamSelect
+                    value={practice.teamId}
+                    onChange={(id) => api.movePracticeToTeam(practice.id, id)}
+                  />
+                </span>
+                {/* A live <select>/<input>'s own text prints in Chromium's
+                    native widget blue regardless of CSS — this plain-text
+                    twin is what actually prints. */}
+                <p className="xs print-only">{teamName(practice.teamId) || <span className="muted">—</span>}</p>
+              </>
             ) : (
               <p className="xs">{teamName(practice.teamId) || <span className="muted">—</span>}</p>
             )}
@@ -4939,7 +4962,10 @@ function PracticeEditor({ practiceId }) {
           <div>
             <span className="seclbl">Practice #</span>
             {editable ? (
-              <input className="inp" placeholder="Practice #" value={practiceNumber} onChange={(e) => setPracticeNumber(e.target.value)} onBlur={saveHeader} />
+              <>
+                <input className="inp no-print" placeholder="Practice #" value={practiceNumber} onChange={(e) => setPracticeNumber(e.target.value)} onBlur={saveHeader} />
+                <p className="xs print-only">{practiceNumber || <span className="muted">—</span>}</p>
+              </>
             ) : (
               <p className="xs">{practice.practiceNumber != null ? practice.practiceNumber : <span className="muted">—</span>}</p>
             )}
@@ -4947,7 +4973,10 @@ function PracticeEditor({ practiceId }) {
           <div>
             <span className="seclbl">Start Time</span>
             {editable ? (
-              <input className="inp" placeholder="Start time (6:00 PM)" value={startTime} onChange={(e) => setStartTime(e.target.value)} onBlur={saveHeader} />
+              <>
+                <input className="inp no-print" placeholder="Start time (6:00 PM)" value={startTime} onChange={(e) => setStartTime(e.target.value)} onBlur={saveHeader} />
+                <p className="xs print-only">{startTime || <span className="muted">—</span>}</p>
+              </>
             ) : (
               <p className="xs">{practice.startTime || <span className="muted">—</span>}</p>
             )}
@@ -4955,7 +4984,10 @@ function PracticeEditor({ practiceId }) {
           <div>
             <span className="seclbl">End Time</span>
             {editable ? (
-              <input className="inp" placeholder="End time (7:30 PM)" value={endTime} onChange={(e) => setEndTime(e.target.value)} onBlur={saveHeader} />
+              <>
+                <input className="inp no-print" placeholder="End time (7:30 PM)" value={endTime} onChange={(e) => setEndTime(e.target.value)} onBlur={saveHeader} />
+                <p className="xs print-only">{endTime || <span className="muted">—</span>}</p>
+              </>
             ) : (
               <p className="xs">{practice.endTime || <span className="muted">—</span>}</p>
             )}
@@ -5056,13 +5088,19 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
     <div className="pad prow">
       <div className="prow-grid">
         {editable ? (
-          <select
-            className="inp"
-            value={category}
-            onChange={(e) => { setCategory(e.target.value); save({ category: e.target.value }); }}
-          >
-            {CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
-          </select>
+          <>
+            <select
+              className="inp no-print"
+              value={category}
+              onChange={(e) => { setCategory(e.target.value); save({ category: e.target.value }); }}
+            >
+              {CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+            </select>
+            {/* Chromium's print-to-PDF pipeline paints a <select>'s own text
+                in a native platform blue no matter what CSS says — this
+                plain-text twin is what actually prints. */}
+            <span className="print-only">{CATEGORY_LABEL[category]}</span>
+          </>
         ) : (
           <Pill label={CATEGORY_LABEL[category]} tone={CATEGORY_TONE[category]} />
         )}
@@ -5108,8 +5146,9 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
         <div className="prow-dur">
           {editable ? (
             <>
-              <input type="number" className="inp" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} onBlur={() => save()} />
-              <span className="muted xs"> min</span>
+              <input type="number" className="inp no-print" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} onBlur={() => save()} />
+              <span className="muted xs no-print"> min</span>
+              <span className="print-only">{durationMin} <span className="muted">min</span></span>
             </>
           ) : (
             <span className="sb xs">{durationMin} <span className="muted">min</span></span>
