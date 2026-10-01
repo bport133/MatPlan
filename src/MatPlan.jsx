@@ -499,17 +499,15 @@ const CSS = `
     margin-top: 10px; padding-top: 6px; border-top: 1px solid #ddd;
   }
   .print-only { display: inline; }
-  /* .print-only twins have no color of their own, so they inherit --text
-     down through several layers of ancestors (.thead > div > p, etc.).
-     That's resolved correctly in this sandbox's Chromium, but a real
-     device's screenshot showed these same values (team name, start time,
-     category, duration) printing in blue while their labels printed
-     correctly in black — a browser difference in how deep var(--text)
-     inheritance resolves under print that can't be reproduced or diagnosed
-     further here. Pinning color directly on the class every twin already
-     carries sidesteps the inheritance chain entirely and is unaffected by
-     whichever browser or custom-property resolution quirk causes it. */
   .mp .print-only { color: #000 !important; }
+  /* Pixel-sampled a real printed page: thin regular-weight text (team name,
+     category, duration, teaching cues) shows faint, inconsistent-direction
+     color fringing (purple here, green there, a few RGB units off) while
+     bold text at the same size (the skill name, already 600 weight) comes
+     back pure (0,0,0) — the signature of LCD subpixel anti-aliasing on thin
+     glyphs, not a real CSS color. Bolding these removes the thin edges that
+     fringe in the first place, same fix already proven on the skill name. */
+  .mp .print-only, .mp .rte-content, .mp .rte-readonly { font-weight: 600 !important; }
 }
 `;
 
