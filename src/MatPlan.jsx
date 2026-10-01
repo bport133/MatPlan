@@ -402,10 +402,28 @@ const CSS = `
     --raised: #fff !important;
     --line: #ccc !important;
     --text: #000 !important;
-    --muted: #555 !important;
+    --muted: #000 !important;
     --texture: none !important;
     background: #fff !important;
     font-size: 11px !important;
+  }
+  /* By explicit request: every printed text color is either black or the
+     accent red already used for labels — no light/pastel tones. Pills
+     throughout the app (Squad's weight/level badges, outcomes, status
+     chips, ...) set their own text color via var(--tone-*-color), tuned
+     for the dark on-screen theme — overriding every one of those here
+     flattens all of them to black for print while leaving each tone's
+     background/border alone, so a pill still reads as a distinct badge,
+     just with legible black text instead of a washed-out tint. Team-
+     colored pills (Squad's team badges, the calendar) aren't part of this
+     system — eventPillStyle sets their color directly, untouched here. */
+  .mp {
+    --tone-red-color: #000 !important;
+    --tone-orange-color: #000 !important;
+    --tone-amber-color: #000 !important;
+    --tone-emerald-color: #000 !important;
+    --tone-blue-color: #000 !important;
+    --tone-slate-color: #000 !important;
   }
   body { background: #fff !important; }
   .mp .card, .mp .ib {
