@@ -411,16 +411,26 @@ const CSS = `
   .mp .ibhdr { background: #f3f3f3 !important; }
   .mp .cal-cell.out { background: #f3f3f3 !important; color: #888 !important; }
   .mp .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* Printed <input>/<select>/<textarea> never inherit the page's own
+     font-size — browsers give form controls their own UA default (~15px)
+     regardless of ancestor font-size, print or not. Left alone, every
+     printed field (duration, category, a sheet's weight entries, …)
+     prints visibly larger than the plain text and labels around it. */
   .mp .inp, .mp select.inp, .mp textarea.inp {
     border: none !important;
     background: none !important;
     padding: 0 !important;
     -webkit-appearance: none;
     appearance: none;
+    font-size: 12px !important;
   }
-  .mp .rte, .mp .rte-content, .mp .rte-readonly { border: none !important; background: none !important; padding: 0 !important; }
+  .mp .rte, .mp .rte-content, .mp .rte-readonly { border: none !important; background: none !important; padding: 0 !important; font-size: 12px !important; }
   .mp .prow { break-inside: avoid; }
-  .mp .prow-name { font-size: 15px !important; }
+  /* Higher specificity than .mp .inp's own print font-size rule below, so
+     an ad-hoc row's still-editable <input> prints as the same bold
+     heading as a linked row's read-only name — not the plain small text
+     every other printed form field gets. */
+  .mp .prow-grid .prow-name { font-size: 15px !important; font-weight: 600 !important; }
   /*
    * The practice header (Team/Practice #/Start/End/Duration) normally
    * stacks a label above its value for a comfortable editing target, but on
@@ -4516,7 +4526,7 @@ function RichTextEditor({ value, onChange, onBlur, autoBullet }) {
   // of typing the arrow character by hand each time.
   function insertArrow() {
     if (ref.current) ref.current.focus();
-    document.execCommand("insertText", false, "➜");
+    document.execCommand("insertText", false, " ➜ ");
     handleInput();
   }
 
@@ -4595,7 +4605,7 @@ function SkillConceptField({ value, options, onChangeText, onPick, onBlur }) {
   return (
     <div style={{ position: "relative", maxWidth: 220, width: "100%" }}>
       <input
-        className="inp"
+        className="inp prow-name"
         style={{ width: "100%" }}
         placeholder="Skill / Concept"
         value={value}
