@@ -4495,6 +4495,14 @@ function RichTextEditor({ value, onChange, onBlur, autoBullet }) {
     handleInput();
   }
 
+  // Lets a progression read "Jog➜Shuffle Inside➜Skip" at the cursor instead
+  // of typing the arrow character by hand each time.
+  function insertArrow() {
+    if (ref.current) ref.current.focus();
+    document.execCommand("insertText", false, "➜");
+    handleInput();
+  }
+
   const TOOLBAR = [
     { cmd: "bold", label: "B", title: "Bold" },
     { cmd: "italic", label: "I", title: "Italic" },
@@ -4517,6 +4525,15 @@ function RichTextEditor({ value, onChange, onBlur, autoBullet }) {
             {t.label}
           </button>
         ))}
+        <button
+          type="button"
+          className="rte-btn"
+          title="Insert arrow (➜)"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={insertArrow}
+        >
+          ➜
+        </button>
       </div>
       <div
         ref={ref}
@@ -5010,7 +5027,7 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
           {item ? (
             <>
               <span className="sb">{item.name}</span>
-              <span className="muted tiny">{[item.position, item.situation].filter(Boolean).join(" › ")}</span>
+              <span className="muted tiny no-print">{[item.position, item.situation].filter(Boolean).join(" › ")}</span>
             </>
           ) : editable ? (
             <SkillConceptField
@@ -5068,7 +5085,7 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
         </Field>
       </div>
 
-      <div className="row between wrapf gap2" style={{ marginTop: 8 }}>
+      <div className="row between wrapf gap2 no-print" style={{ marginTop: 8 }}>
         <div className="row gap2 wrapf">
         {OUTCOMES.map((o) => (
           <button
