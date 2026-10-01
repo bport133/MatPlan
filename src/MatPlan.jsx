@@ -137,8 +137,25 @@ const CSS = `
 @media (max-width: 820px) { .g3, .g4 { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
 
-.prow-head { display: grid; grid-template-columns: 1fr auto 92px; gap: 10px; align-items: start; }.prow-dur { text-align: right; white-space: nowrap; }
+/* Practice Flow table: Category | Skill/Concept | Teaching Cues | Duration,
+   one compact row per item instead of a tall stacked card — the column
+   labels live once in .pflow-head-row rather than repeated per row. */
+.pflow-head-row {
+  display: grid; grid-template-columns: 120px 1.1fr 1.3fr 80px; gap: 12px;
+  padding: 6px 12px; border-bottom: 1px solid var(--line);
+}
+.pflow-head-row span {
+  font-family: var(--font-heading); font-size: 11px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); font-weight: 700;
+}
+.prow-grid { display: grid; grid-template-columns: 120px 1.1fr 1.3fr 80px; gap: 12px; align-items: start; }
+.prow-dur { text-align: right; white-space: nowrap; }
 .prow-dur .inp { width: 52px; text-align: right; display: inline-block; }
+@media (max-width: 760px) {
+  .pflow-head-row { display: none; }
+  .prow-grid { grid-template-columns: 1fr; }
+  .prow-dur { text-align: left; }
+}
 
 /* Sheet-style practice header: Team | Practice #, Start | End, Duration full width. */
 .thead { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
@@ -147,7 +164,6 @@ const CSS = `
 .thead > .thead-wide { grid-column: 1 / -1; border-right: none; border-bottom: none; text-align: center; }
 .thead .seclbl { display: block; margin-bottom: 2px; }
 .thead .inp { width: 100%; }
-@media (max-width: 640px) { .prow-head { grid-template-columns: 1fr auto; } .prow-dur { grid-column: 2; } }
 
 /* Roster row: Name | Team | Weight | Level | actions, each in its own
    column so they line up down the list instead of bunching to the left. */
@@ -338,7 +354,7 @@ const CSS = `
 .rte-btn { width: 26px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; border: 1px solid transparent; background: transparent; color: var(--text); font-size: 12px; font-weight: 700; line-height: 1; }
 .rte-btn:hover { background: var(--panel2); border-color: var(--line); }
 .rte-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.rte-content { min-height: 44px; padding: .5rem .6rem; font-size: .875rem; color: var(--text); outline: none; }
+.rte-content { min-height: 30px; padding: .35rem .6rem; font-size: .875rem; color: var(--text); outline: none; }
 .rte-content ul, .rte-readonly ul { list-style: disc; margin: 4px 0; padding-left: 20px; }
 .rte-readonly { padding: .5rem .6rem; background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; }
 
@@ -4966,9 +4982,14 @@ function PracticeEditor({ practiceId }) {
       </div>
 
       <div className="card">
-        <div className="hdr">
-          <h2 className="sb" style={{ fontSize: 15 }}>Practice Flow</h2>
+        <div className="row" style={{ padding: "6px 12px 0", justifyContent: "flex-end" }}>
           <span className="muted xs">{totalMinutes} min total</span>
+        </div>
+        <div className="pflow-head-row">
+          <span>Category</span>
+          <span>Skill / Concept</span>
+          <span>Teaching Cues / Progression</span>
+          <span style={{ textAlign: "right" }}>Duration</span>
         </div>
         <div className="divide">
           {sortedRows.map((row, i) => (
@@ -5023,12 +5044,26 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
 
   return (
     <div className="pad prow">
-      <div className="prow-head">
-        <div className="row gap2 wrapf">
+      <div className="prow-grid">
+        {editable ? (
+          <select
+            className="inp"
+            value={category}
+            onChange={(e) => { setCategory(e.target.value); save({ category: e.target.value }); }}
+          >
+            {CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+          </select>
+        ) : (
+          <Pill label={CATEGORY_LABEL[category]} tone={CATEGORY_TONE[category]} />
+        )}
+
+        <div>
           {item ? (
             <>
               <span className="sb prow-name">{item.name}</span>
-              <span className="muted tiny no-print">{[item.position, item.situation].filter(Boolean).join(" › ")}</span>
+              <span className="muted tiny no-print" style={{ display: "block" }}>
+                {[item.position, item.situation].filter(Boolean).join(" › ")}
+              </span>
             </>
           ) : editable ? (
             <SkillConceptField
@@ -5049,18 +5084,16 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
             <span className="sb prow-name">{adHocLabel || "(untitled)"}</span>
           )}
         </div>
-        {editable ? (
-          <select
-            className="inp"
-            style={{ maxWidth: 140 }}
-            value={category}
-            onChange={(e) => { setCategory(e.target.value); save({ category: e.target.value }); }}
-          >
-            {CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
-          </select>
-        ) : (
-          <Pill label={CATEGORY_LABEL[category]} tone={CATEGORY_TONE[category]} />
-        )}
+
+        <div>
+          {editable ? (
+            <RichTextEditor value={teachingCues} onChange={setTeachingCues} onBlur={() => save()} autoBullet />
+          ) : teachingCues ? (
+            <div className="xs rte-readonly" dangerouslySetInnerHTML={{ __html: teachingCues }} />
+          ) : (
+            <p className="xs muted">—</p>
+          )}
+        </div>
 
         <div className="prow-dur">
           {editable ? (
@@ -5074,19 +5107,7 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
         </div>
       </div>
 
-      <div style={{ marginTop: 8 }}>
-        <Field label="Teaching Cues / Progression">
-          {editable ? (
-            <RichTextEditor value={teachingCues} onChange={setTeachingCues} onBlur={() => save()} autoBullet />
-          ) : teachingCues ? (
-            <div className="xs rte-readonly" dangerouslySetInnerHTML={{ __html: teachingCues }} />
-          ) : (
-            <p className="xs muted">—</p>
-          )}
-        </Field>
-      </div>
-
-      <div className="row between wrapf gap2 no-print" style={{ marginTop: 8 }}>
+      <div className="row between wrapf gap2 no-print" style={{ marginTop: 6 }}>
         <div className="row gap2 wrapf">
         {OUTCOMES.map((o) => (
           <button
