@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Safari/iOS auto-detects phone numbers, times, dates and addresses
+         in plain text and re-styles them as tap-to-act links in its own
+         system blue — a styling layer page CSS can't override. A practice
+         plan's start/end time and a team name are exactly the kind of text
+         that gets caught, printing blue even after every other color fix. -->
+    <meta name="format-detection" content="telephone=no, date=no, address=no, email=no" />
     <title>MatPlan — Wrestling Program Management</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

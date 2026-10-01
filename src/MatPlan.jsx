@@ -499,6 +499,17 @@ const CSS = `
     margin-top: 10px; padding-top: 6px; border-top: 1px solid #ddd;
   }
   .print-only { display: inline; }
+  /* .print-only twins have no color of their own, so they inherit --text
+     down through several layers of ancestors (.thead > div > p, etc.).
+     That's resolved correctly in this sandbox's Chromium, but a real
+     device's screenshot showed these same values (team name, start time,
+     category, duration) printing in blue while their labels printed
+     correctly in black — a browser difference in how deep var(--text)
+     inheritance resolves under print that can't be reproduced or diagnosed
+     further here. Pinning color directly on the class every twin already
+     carries sidesteps the inheritance chain entirely and is unaffected by
+     whichever browser or custom-property resolution quirk causes it. */
+  .mp .print-only { color: #000 !important; }
 }
 `;
 
