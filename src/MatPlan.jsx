@@ -4987,13 +4987,10 @@ function PracticeEditor({ practiceId }) {
 
 function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions }) {
   const { state, api } = useApp();
-  const [showCues, setShowCues] = useState(false);
   const [category, setCategory] = useState(row.category);
   const [durationMin, setDurationMin] = useState(row.durationMin);
   const [adHocLabel, setAdHocLabel] = useState(row.adHocLabel || "");
   const [teachingCues, setTeachingCues] = useState(row.teachingCues || "");
-
-  const cues = item ? item.cues : [];
 
   function save(overrides) {
     const o = overrides || {};
@@ -5033,12 +5030,6 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
           ) : (
             <span className="sb">{adHocLabel || "(untitled)"}</span>
           )}
-
-          {cues.length > 0 && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowCues((s) => !s)}>
-              {showCues ? "Hide techniques" : `Techniques (${cues.length})`}
-            </button>
-          )}
         </div>
         {editable ? (
           <select
@@ -5064,14 +5055,6 @@ function RowItem({ practiceId, row, item, editable, isFirst, isLast, leafOptions
           )}
         </div>
       </div>
-
-      {showCues && (
-        <ul style={{ margin: "6px 0 0 0", paddingLeft: 18 }}>
-          {[...cues].sort((a, b) => a.order - b.order).map((c) => (
-            <li key={c.id} className="xs muted">{c.text}</li>
-          ))}
-        </ul>
-      )}
 
       <div style={{ marginTop: 8 }}>
         <Field label="Teaching Cues / Progression">
