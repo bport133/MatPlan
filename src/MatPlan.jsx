@@ -453,11 +453,6 @@ const CSS = `
   }
   .mp .rte, .mp .rte-content, .mp .rte-readonly { border: none !important; background: none !important; padding: 0 !important; font-size: 12px !important; }
   .mp .prow { break-inside: avoid; }
-  /* Higher specificity than .mp .inp's own print font-size rule below, so
-     an ad-hoc row's still-editable <input> prints as the same bold
-     heading as a linked row's read-only name — not the plain small text
-     every other printed form field gets. */
-  .mp .prow-grid .prow-name { font-size: 15px !important; font-weight: 600 !important; }
   /*
    * The practice header (Team/Practice #/Start/End/Duration) normally
    * stacks a label above its value for a comfortable editing target, but on
@@ -500,14 +495,39 @@ const CSS = `
   }
   .print-only { display: inline; }
   .mp .print-only { color: #000 !important; }
-  /* Pixel-sampled a real printed page: thin regular-weight text (team name,
-     category, duration, teaching cues) shows faint, inconsistent-direction
-     color fringing (purple here, green there, a few RGB units off) while
-     bold text at the same size (the skill name, already 600 weight) comes
-     back pure (0,0,0) — the signature of LCD subpixel anti-aliasing on thin
-     glyphs, not a real CSS color. Bolding these removes the thin edges that
-     fringe in the first place, same fix already proven on the skill name. */
-  .mp .print-only, .mp .rte-content, .mp .rte-readonly { font-weight: 600 !important; }
+  /* Uniform body text, by explicit request: every value in a printed
+     Practice Plan — team name, times, duration, category, skill/concept
+     name, teaching cues, Live Groups pairs — is the same size and weight,
+     no exceptions for the skill name. Only true headings (column labels
+     like "CATEGORY", card headers like "Live Groups", the page's own date)
+     stay distinct; the calendar is exempted, it's too space-constrained.
+     This also happens to be what kills the faint subpixel anti-aliasing
+     fringe thin regular-weight print text was showing on a real printer
+     (verified by pixel-sampling an actual printed page): bold glyphs at
+     this size came back pure black while the same text at regular weight
+     showed a few stray RGB units of color, so 600 weight is a deliberate
+     choice here, not just a size one. */
+  .mp .thead p, .mp .thead li,
+  .mp .prow-grid, .mp .prow-grid *,
+  .mp .ib td {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+  }
+  /* Same uniform-body treatment, extended to every other printable page:
+     Squad's roster rows, a Weigh-In sheet's entries, and the Playbook's
+     flyout columns/detail panel. Each page's own heading-level elements
+     (card titles, column/section labels) are left alone on purpose. */
+  .mp .wrow, .mp .wrow *,
+  .mp .weighin-section .pad, .mp .weighin-section .pad *,
+  .mp .flyout-item span, .mp .flyout li span.xs, .mp .flyout .muted.tiny {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+  }
+  /* Squad's "+ Bring Up a Wrestler" intake row and the Playbook's filter
+     row are live form controls with no printable value — same reasoning
+     as every other no-print control, just never wrapped in the class
+     before because nobody had printed those two pages yet. */
+  .mp .roster-intake, .mp .playbook-filters { display: none !important; }
 }
 `;
 
@@ -5979,7 +5999,7 @@ function SyllabusPage() {
         </div>
       </div>
 
-      <div className="pad row gap2 wrapf" style={{ paddingBottom: 12 }}>
+      <div className="pad row gap2 wrapf playbook-filters" style={{ paddingBottom: 12 }}>
         <Field label="Position">
           <select className="inp" value={draft.position} onChange={(e) => setDraft({ ...draft, position: e.target.value })}>
             <option value="">All</option>
@@ -6522,7 +6542,7 @@ function RosterPage({ highlightId }) {
         )}
       </div>
 
-      <div className="card pad row gap2 wrapf">
+      <div className="card pad row gap2 wrapf roster-intake">
         <TeamSelect value={teamFilter || newTeamId} onChange={setNewTeamId} style={{ maxWidth: 180 }} />
         <input className="inp" style={{ maxWidth: 200 }} placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWrestler()} />
         <input className="inp numsm" placeholder="Weight (lbs)" value={weight} onChange={(e) => setWeight(e.target.value)} />
@@ -6929,7 +6949,7 @@ function WeighInSheetForm({ sheetId }) {
 
 function WeightClassSection({ sheetId, weightClass, title, entries, editable, rosterNames, classes }) {
   return (
-    <div className="card">
+    <div className="card weighin-section">
       <div className="hdr"><h3 className="sb xs">{title}</h3></div>
       <div className="divide">
         {entries.map((e) => <EntryRow key={e.id} sheetId={sheetId} entry={e} editable={editable} classes={classes} />)}
@@ -7028,7 +7048,7 @@ function AddEntryControl({ sheetId, weightClass, rosterNames }) {
   }
 
   return (
-    <div className="pad row gap2 wrapf">
+    <div className="pad row gap2 wrapf no-print">
       <input
         className="inp"
         style={{ maxWidth: 200 }}
