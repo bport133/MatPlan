@@ -2244,14 +2244,14 @@ function reconcileBouts(bouts, weightClasses) {
  * automatically), and migrateCompetitionWeighIns (which backfills one for
  * any competition saved before that auto-draft existed) — top-level, not
  * inside makeApi, since the migration runs before an api/update exists. */
-function buildWeighInSheet(s, input) {
+function buildWeighInSheet(s, input, id) {
   const clean = (v) => (v && String(v).trim() ? String(v).trim() : null);
   // No team(s) specified means "every team" (see onRosterOfAny) rather
   // than silently guessing the first team in the list — a sheet made
   // from a Practice/Competition still passes its own single teamId.
   const teamIds = Array.isArray(input.teamIds) ? input.teamIds : input.teamId ? [input.teamId] : [];
   return {
-    id: uid(), date: input.date,
+    id: id || uid(), date: input.date,
     event: clean(input.event),
     homeTeam: clean(input.homeTeam),
     visitorTeam: clean(input.visitorTeam),
@@ -3028,10 +3028,9 @@ function makeApi(update) {
 
     /* ---- weigh-in sheets ---- */
     createWeighInSheet(input) {
-      let id;
+      const id = uid();
       update((s) => {
-        const sheet = buildWeighInSheet(s, input);
-        id = sheet.id;
+        const sheet = buildWeighInSheet(s, input, id);
         return { ...s, weighInSheets: [...s.weighInSheets, sheet] };
       });
       return id;
@@ -6941,21 +6940,33 @@ function EntryRow({ sheetId, entry, editable, classes }) {
     );
   }
 
+  // A still-open sheet's entries are live <input>/<select> elements — same
+  // Chromium print-to-PDF quirk as practice plans, where a live form
+  // control's own text prints in native widget blue regardless of CSS.
+  // Each field gets a plain-text .print-only twin alongside it.
   return (
     <div className="pad row gap2 wrapf" style={out ? { opacity: 0.55 } : undefined}>
-      <input className="inp" style={{ maxWidth: 160 }} list="roster-names" placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => save()} />
-      <Field label="WT"><input className="inp numsm" value={weight} onChange={(e) => setWeight(e.target.value)} onBlur={() => save()} /></Field>
-      <Field label="Level"><input className="inp numsm" value={level} onChange={(e) => setLevel(e.target.value)} onBlur={() => save()} /></Field>
+      <input className="inp no-print" style={{ maxWidth: 160 }} list="roster-names" placeholder="Wrestler name" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => save()} />
+      <span className="sb xs print-only" style={{ minWidth: 140 }}>{name}</span>
+      <Field label="WT">
+        <input className="inp numsm no-print" value={weight} onChange={(e) => setWeight(e.target.value)} onBlur={() => save()} />
+        <span className="xs print-only">{weight}</span>
+      </Field>
+      <Field label="Level">
+        <input className="inp numsm no-print" value={level} onChange={(e) => setLevel(e.target.value)} onBlur={() => save()} />
+        <span className="xs print-only">{level}</span>
+      </Field>
       {/* Only entries with no weight class (the Extra Wrestlers section) need
           this picker — anyone already in a class section is already showing
           it as that section's heading, so repeating it on the row was just
           the same number twice. */}
       {!entry.weightClass && (
         <Field label="Class">
-          <select className="inp numsm" value={weightClass} onChange={(e) => { setWeightClass(e.target.value); save(e.target.value); }}>
+          <select className="inp numsm no-print" value={weightClass} onChange={(e) => { setWeightClass(e.target.value); save(e.target.value); }}>
             <option value="">Extra</option>
             {classes.map((wc) => <option key={wc} value={wc}>{wc}</option>)}
           </select>
+          <span className="xs print-only">{weightClass || "Extra"}</span>
         </Field>
       )}
       <button
