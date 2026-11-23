@@ -62,3 +62,21 @@ create policy "coaches can update app_state" on public.app_state
 
 -- Realtime, so an open tab picks up another coach's changes without a reload.
 alter publication supabase_realtime add table public.app_state;
+
+-- ---------- Document library ----------
+-- A shared bucket for reusable files (handbooks, forms, waivers, rosters,
+-- ...) coaches upload once and download repeatedly. Only the raw file bytes
+-- live here — each file's name, size, and who/when it was uploaded is
+-- metadata that lives in app_state.data.documents instead, right alongside
+-- the rest of the shared state, so the state blob itself stays tiny no
+-- matter how many or how large the files in this bucket get.
+insert into storage.buckets (id, name, public)
+values ('documents', 'documents', false)
+on conflict (id) do nothing;
+
+create policy "coaches can read documents" on storage.objects
+  for select to authenticated using (bucket_id = 'documents');
+create policy "coaches can upload documents" on storage.objects
+  for insert to authenticated with check (bucket_id = 'documents');
+create policy "coaches can delete documents" on storage.objects
+  for delete to authenticated using (bucket_id = 'documents');

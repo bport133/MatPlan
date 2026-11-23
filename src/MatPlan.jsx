@@ -63,6 +63,7 @@ const CSS = `
   --grad-violet: linear-gradient(135deg, #c4b5fd, #7c3aed);
   --grad-teal: linear-gradient(135deg, #5eead4, #0d9488);
   --grad-emerald: linear-gradient(135deg, #6ee7b7, #059669);
+  --grad-slate: linear-gradient(135deg, #94a3b8, #475569);
   /* A solid color per gradient above, for a box-shadow ring — box-shadow
      can't take a gradient, so each tab's active-state glow pairs its
      gradient's own darker stop here instead of falling back to one shared
@@ -73,6 +74,7 @@ const CSS = `
   --ring-cool: #2563a8;
   --ring-gold: #c9a227;
   --ring-emerald: #059669;
+  --ring-slate: #475569;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -127,6 +129,7 @@ const CSS = `
 .hdr-accent-violet::before { background: var(--grad-violet); }
 .hdr-accent-teal::before { background: var(--grad-teal); }
 .hdr-accent-emerald::before { background: var(--grad-emerald); }
+.hdr-accent-slate::before { background: var(--grad-slate); }
 
 .row { display: flex; align-items: center; }
 .wrapf { flex-wrap: wrap; }
@@ -1322,6 +1325,13 @@ function download(filename, text, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function formatBytes(n) {
+  if (n == null) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /* Portal target for fixed-position dropdowns (GlobalSearch results,
    CustomizeMenu). Must stay inside #mp-root rather than document.body —
    the app's colors are CSS custom properties scoped to .mp, which don't
@@ -1989,6 +1999,11 @@ function migrateLinks(saved) {
   return { ...saved, links: [] };
 }
 
+function migrateDocuments(saved) {
+  if (Array.isArray(saved.documents)) return saved;
+  return { ...saved, documents: [] };
+}
+
 /** Drops cues left blank by editing one down to nothing and saving (fixed at the source, but strips any that already exist). */
 function migrateEmptyCues(saved) {
   if (!saved.syllabus || !saved.syllabus.some((i) => (i.cues || []).some((c) => !c.text || !c.text.trim()))) return saved;
@@ -2105,6 +2120,7 @@ function seedState() {
     history,
     categoryOrder: { POSITION: [], SITUATION: [], STRUCTURE: [] },
     links: [],
+    documents: [],
     syllabusRevision: SYLLABUS_REVISION,
     numberingRevision: NUMBERING_REVISION,
   };
@@ -2114,7 +2130,7 @@ const AppCtx = React.createContext(null);
 const useApp = () => React.useContext(AppCtx);
 
 function runMigrations(saved) {
-  return migrateTeamEvents(
+  return migrateDocuments(migrateTeamEvents(
     migrateCompetitionWeighIns(
     migrateWeighInSheetWeightClasses(
       migrateTournamentResults(
@@ -2133,11 +2149,12 @@ function runMigrations(saved) {
         )
       )
     )
-  ));
+  )));
 }
 
 const APP_STATE_TABLE = "app_state";
 const APP_STATE_ROW_ID = "singleton";
+const DOCUMENTS_BUCKET = "documents";
 
 /**
  * Two persistence backends behind one interface. Without Supabase configured
@@ -3202,6 +3219,47 @@ function makeApi(update) {
     resetTheme() {
       update((s) => ({ ...s, program: { ...s.program, ...THEME_DEFAULTS, logoDataUrl: null } }));
     },
+    /* ---- documents (a shared file library — the raw bytes live in a
+       Supabase Storage bucket; this list is just their metadata, so it
+       stays tiny no matter how many or how large the files are) ---- */
+    async uploadDocument(file, uploadedBy) {
+      if (!supabaseEnabled) throw new Error("Document storage requires Supabase to be configured for this workspace.");
+      const path = `${uid()}-${file.name}`;
+      const { error } = await supabase.storage.from(DOCUMENTS_BUCKET).upload(path, file, {
+        contentType: file.type || undefined,
+      });
+      if (error) throw error;
+      const doc = {
+        id: uid(),
+        name: file.name,
+        storagePath: path,
+        size: file.size,
+        contentType: file.type || null,
+        uploadedBy: uploadedBy || null,
+        createdAt: new Date().toISOString(),
+      };
+      update((s) => ({ ...s, documents: [doc, ...s.documents] }));
+    },
+    async downloadDocument(doc) {
+      if (!supabaseEnabled) throw new Error("Document storage requires Supabase to be configured for this workspace.");
+      const { data, error } = await supabase.storage.from(DOCUMENTS_BUCKET).download(doc.storagePath);
+      if (error) throw error;
+      const url = URL.createObjectURL(data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = doc.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+    deleteDocument(id) {
+      update((s) => {
+        const doc = s.documents.find((d) => d.id === id);
+        if (doc && supabaseEnabled) supabase.storage.from(DOCUMENTS_BUCKET).remove([doc.storagePath]);
+        return { ...s, documents: s.documents.filter((d) => d.id !== id) };
+      });
+    },
     resetAllData() {
       update(() => seedState());
     },
@@ -3252,6 +3310,7 @@ const TABS = [
   { tab: "weighin", label: "Weigh-In", grad: "--grad-cool", ring: "--ring-cool" },
   { tab: "competitions", label: "Competitions", grad: "--grad-emerald", ring: "--ring-emerald" },
   { tab: "history", label: "Hall of Fame", grad: "--grad-gold", ring: "--ring-gold" },
+  { tab: "documents", label: "Documents", grad: "--grad-slate", ring: "--ring-slate" },
 ];
 
 function TabNav() {
@@ -7212,6 +7271,111 @@ function AddRecordForm({ category }) {
   );
 }
 
+/* ============================== DOCUMENTS ============================== */
+
+function DocumentsPage() {
+  const { state, api } = useApp();
+  const { user } = useAuth();
+  const fileInputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [error, setError] = useState(null);
+
+  const docs = [...state.documents].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  async function onFileChosen(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      await api.uploadDocument(file, user ? user.email : null);
+    } catch (err) {
+      setError(err.message || "Upload failed.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function onDownload(doc) {
+    setError(null);
+    setDownloadingId(doc.id);
+    try {
+      await api.downloadDocument(doc);
+    } catch (err) {
+      setError(err.message || "Download failed.");
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  return (
+    <div className="grid" style={{ gap: 16 }}>
+      <div className="card hdr-accent hdr-accent-slate">
+        <div className="hdr">
+          <h1 className="b" style={{ fontSize: 17 }}>Documents</h1>
+          <div className="row gap2 wrapf">
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={onFileChosen}
+              disabled={uploading || !supabaseEnabled}
+              style={{ display: "none" }}
+            />
+            <button
+              className="btn btn-g btn-sm"
+              disabled={uploading || !supabaseEnabled}
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            >
+              {uploading ? "Uploading…" : "+ Upload Document"}
+            </button>
+          </div>
+        </div>
+        <div className="pad xs muted">
+          A shared library for reusable files — handbooks, forms, waivers, anything coaches upload once and come back to.
+        </div>
+        {!supabaseEnabled && (
+          <div className="pad xs" style={{ color: "var(--tone-red-color)" }}>
+            Document storage requires Supabase to be configured for this workspace.
+          </div>
+        )}
+        {error && <div className="pad xs" style={{ color: "var(--tone-red-color)" }}>{error}</div>}
+      </div>
+
+      <div className="card divide">
+        {docs.map((doc) => (
+          <div key={doc.id} className="pad row between wrapf gap2">
+            <div>
+              <span className="sb xs">{doc.name}</span>
+              <div className="muted tiny">
+                {formatBytes(doc.size)} · Uploaded {fmtShort(new Date(doc.createdAt))}
+                {doc.uploadedBy ? ` by ${doc.uploadedBy}` : ""}
+              </div>
+            </div>
+            <div className="row gap2">
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={downloadingId === doc.id}
+                onClick={() => onDownload(doc)}
+              >
+                {downloadingId === doc.id ? "Downloading…" : "Download"}
+              </button>
+              <ConfirmButton
+                label="Delete"
+                className="btn btn-ghost btn-sm"
+                message={`Delete "${doc.name}"? This can't be undone.`}
+                onConfirm={() => api.deleteDocument(doc.id)}
+              />
+            </div>
+          </div>
+        ))}
+        {docs.length === 0 && <div className="pad muted xs">No documents yet — upload one above.</div>}
+      </div>
+    </div>
+  );
+}
+
 /* ============================== USER GUIDE ============================== */
 
 function GuideSection({ title, children }) {
@@ -7377,6 +7541,10 @@ function UserGuidePage() {
 
       <GuideSection title="Hall of Fame: The One Deliberately Disconnected Page">
         <p>Hall of Fame is a permanent record of past champions (Intersectional/State, Section Qualifiers, Sectional Class champs), entered directly — name, weight, years. It's the one page that doesn't read from Squad or auto-populate from anything: a Hall of Fame entry survives a roster wipe, a season reset, or a wrestler graduating and being marked inactive, because it isn't <i>linked</i> to that wrestler's live Squad record at all, just a historical note that happens to share a name. Add entries by hand each season as results come in; nothing else in the app will ever silently create or remove one for you.</p>
+      </GuideSection>
+
+      <GuideSection title="Documents: A Shared File Library">
+        <p>Documents is a central place for files coaches upload once and come back to repeatedly — handbooks, waiver forms, roster templates, anything that doesn't change often but needs to be easy to find. Upload a file and it's immediately available to every signed-in coach; download it again from any device, any time. Unlike every other page, Documents stores the files themselves in a separate Supabase Storage bucket rather than the shared app data — only each file's name, size, and upload info live alongside the rest of the app's data, which is what keeps uploading a large PDF from making every other edit in the app slower to save.</p>
       </GuideSection>
 
       <GuideSection title="Features That Cut Across Every Page">
@@ -8040,6 +8208,8 @@ function Screen() {
       return <CompetitionsSummaryPage />;
     case "history":
       return <HistoryPage />;
+    case "documents":
+      return <DocumentsPage />;
     case "settings":
       return <SettingsPage />;
     case "guide":
